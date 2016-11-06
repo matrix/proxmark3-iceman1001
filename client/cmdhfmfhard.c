@@ -17,8 +17,7 @@
 
 #define CONFIDENCE_THRESHOLD	0.95		// Collect nonces until we are certain enough that the following brute force is successfull
 #define GOOD_BYTES_REQUIRED	13		// default 28, could be smaller == faster
-#define MIN_NONCES_REQUIRED	4000		// 4000-5000 could be good
-#define NONCES_TRIGGER		2500		// every 2500 nonces check if we can crack the key
+#define NONCES_THRESHOLD	5000		// every N nonces check if we can crack the key
 #define CRACKING_THRESHOLD	39.00f		// as 2^39
 
 #define END_OF_LIST_MARKER		0xFFFFFFFF
@@ -256,10 +255,7 @@ static double p_hypergeometric(uint16_t N, uint16_t K, uint16_t n, uint16_t k)
 		for (int16_t i = N; i >= N-n+1; i--) {
 			log_result -= log(i);
 		}
-		if ( log_result > 0 )
-			return exp(log_result);
-		else 
-			return 0.0;
+		return exp(log_result);
 	} else {
 		if (n-k == N-K) {	// special case. The published recursion below would fail with a divide by zero exception
 			double log_result = 0.0;
@@ -269,7 +265,7 @@ static double p_hypergeometric(uint16_t N, uint16_t K, uint16_t n, uint16_t k)
 			for (int16_t i = K+1; i <= N; i++) {
 				log_result -= log(i);
 			}
-			return (log_result > 0) ? exp(log_result) : 0.0;
+			return exp(log_result);
 		} else { 			// recursion
 			return (p_hypergeometric(N, K, n, k-1) * (K-k+1) * (n-k+1) / (k * (N-K-n+k)));
 		}
@@ -283,9 +279,6 @@ static float sum_probability(uint16_t K, uint16_t n, uint16_t k)
 	if (k > K || p_K[K] == 0.0) return 0.0;
 
 	double p_T_is_k_when_S_is_K = p_hypergeometric(N, K, n, k);
-
-	if (p_T_is_k_when_S_is_K == 0.0) return 0.0;
-
 	double p_S_is_K = p_K[K];
 	double p_T_is_k = 0;
 	for (uint16_t i = 0; i <= 256; i++) {
@@ -563,9 +556,11 @@ static void sort_best_first_bytes(void)
 	}	
 
 	// swap best possible first byte to the pole position
-	uint16_t temp = best_first_bytes[0];
-	best_first_bytes[0] = best_first_bytes[best_first_byte];
-	best_first_bytes[best_first_byte] = temp;
+	if (best_first_byte != 0) {
+		uint16_t temp = best_first_bytes[0];
+		best_first_bytes[0] = best_first_bytes[best_first_byte];
+		best_first_bytes[best_first_byte] = temp;
+	}
 	
 }
 
@@ -840,27 +835,24 @@ static int acquire_nonces(uint8_t blockNo, uint8_t keyType, uint8_t *key, uint8_
 				printf("Acquired %5d nonces (%5d / %5d with distinct bytes 0 and 1). Number of bytes with probability for correctly guessed Sum(a8) > %1.1f%%: %d\n",
 					total_num_nonces,
 					total_added_nonces,
-					(total_added_nonces < MIN_NONCES_REQUIRED) ? MIN_NONCES_REQUIRED : (NONCES_TRIGGER*idx),
+					NONCES_THRESHOLD * idx,
 					CONFIDENCE_THRESHOLD * 100.0,
 					num_good_first_bytes);
 			}
 
-			if (total_added_nonces >= MIN_NONCES_REQUIRED)
+			if (total_added_nonces >= (NONCES_THRESHOLD * idx))
 			{
 				num_good_first_bytes = estimate_second_byte_sum();
-				if (total_added_nonces > (NONCES_TRIGGER*idx))
-				{
-					clock_t time1 = clock();
-					bool cracking = generate_candidates(first_byte_Sum, nonces[best_first_bytes[0]].Sum8_guess);
-					time1 = clock() - time1;
-					if (time1 > 0) PrintAndLog("Time for generating key candidates list: %1.0f seconds", ((float)time1)/CLOCKS_PER_SEC);
+				clock_t time1 = clock();
+				bool cracking = generate_candidates(first_byte_Sum, nonces[best_first_bytes[0]].Sum8_guess);
+				time1 = clock() - time1;
+				if (time1 > 0) PrintAndLog("Time for generating key candidates list: %1.0f seconds", ((float)time1)/CLOCKS_PER_SEC);
 
-					if (cracking || known_target_key != -1) {
-						field_off = brute_force(); // switch off field with next SendCommand and then finish
-					}
-
-					idx++;
+				if (cracking || known_target_key != -1) {
+					field_off = brute_force(); // switch off field with next SendCommand and then finish
 				}
+
+				idx++;
 			}
 		}
 
@@ -1317,30 +1309,32 @@ static bool generate_candidates(uint16_t sum_a0, uint16_t sum_a8)
 					for (uint16_t s = 0; s <= 16; s += 2) {
 						if (r*(16-s) + (16-r)*s == sum_a8) {
 							current_candidates = add_more_candidates(current_candidates);
-							// check for the smallest partial statelist. Try this first - it might give 0 candidates 
-							// and eliminate the need to calculate the other part
-							if (MIN(partial_statelist[p].len[ODD_STATE], partial_statelist[r].len[ODD_STATE]) 
+							if (current_candidates) {
+								// check for the smallest partial statelist. Try this first - it might give 0 candidates 
+								// and eliminate the need to calculate the other part
+								if (MIN(partial_statelist[p].len[ODD_STATE], partial_statelist[r].len[ODD_STATE]) 
 									< MIN(partial_statelist[q].len[EVEN_STATE], partial_statelist[s].len[EVEN_STATE])) { 
-								add_matching_states(current_candidates, p, r, ODD_STATE);
-								if(current_candidates->len[ODD_STATE]) {
-									add_matching_states(current_candidates, q, s, EVEN_STATE);
-								} else {
-									current_candidates->len[EVEN_STATE] = 0;
-									uint32_t *p = current_candidates->states[EVEN_STATE] = malloc(sizeof(uint32_t));
-									*p = END_OF_LIST_MARKER;
-								}
-							} else {
-								add_matching_states(current_candidates, q, s, EVEN_STATE);
-								if(current_candidates->len[EVEN_STATE]) {
 									add_matching_states(current_candidates, p, r, ODD_STATE);
+									if(current_candidates->len[ODD_STATE]) {
+										add_matching_states(current_candidates, q, s, EVEN_STATE);
+									} else {
+										current_candidates->len[EVEN_STATE] = 0;
+										uint32_t *p = current_candidates->states[EVEN_STATE] = malloc(sizeof(uint32_t));
+										*p = END_OF_LIST_MARKER;
+									}
 								} else {
-									current_candidates->len[ODD_STATE] = 0;
-									uint32_t *p = current_candidates->states[ODD_STATE] = malloc(sizeof(uint32_t));
-									*p = END_OF_LIST_MARKER;
+									add_matching_states(current_candidates, q, s, EVEN_STATE);
+									if(current_candidates->len[EVEN_STATE]) {
+										add_matching_states(current_candidates, p, r, ODD_STATE);
+									} else {
+										current_candidates->len[ODD_STATE] = 0;
+										uint32_t *p = current_candidates->states[ODD_STATE] = malloc(sizeof(uint32_t));
+										*p = END_OF_LIST_MARKER;
+									}
 								}
+								//printf("Odd  state candidates: %6d (2^%0.1f)\n", current_candidates->len[ODD_STATE], log(current_candidates->len[ODD_STATE])/log(2)); 
+								//printf("Even state candidates: %6d (2^%0.1f)\n", current_candidates->len[EVEN_STATE], log(current_candidates->len[EVEN_STATE])/log(2)); 
 							}
-							//printf("Odd  state candidates: %6d (2^%0.1f)\n", current_candidates->len[ODD_STATE], log(current_candidates->len[ODD_STATE])/log(2)); 
-							//printf("Even state candidates: %6d (2^%0.1f)\n", current_candidates->len[EVEN_STATE], log(current_candidates->len[EVEN_STATE])/log(2)); 
 						}
 					}
 				}
@@ -1349,7 +1343,8 @@ static bool generate_candidates(uint16_t sum_a0, uint16_t sum_a8)
 	}					
 
 	maximum_states = 0;
-	for (statelist_t *sl = candidates; sl != NULL; sl = sl->next) {
+	unsigned int n = 0;
+	for (statelist_t *sl = candidates; sl != NULL && n < 128; sl = sl->next, n++) {
 		maximum_states += (uint64_t)sl->len[ODD_STATE] * sl->len[EVEN_STATE];
 	}
 
@@ -1696,10 +1691,11 @@ static bool brute_force(void)
 
 		// count number of states to go
 		bucket_count = 0;
-		for (statelist_t *p = candidates; p != NULL; p = p->next) {
+		for (statelist_t *p = candidates; p != NULL && bucket_count < 128; p = p->next) {
 			buckets[bucket_count] = p;
 			bucket_count++;
 		}
+		buckets[bucket_count] = NULL;
 
 #ifndef __WIN32
 		thread_count = sysconf(_SC_NPROCESSORS_CONF);
@@ -1727,7 +1723,6 @@ static bool brute_force(void)
 		// }
 
 		if (keys_found && TestIfKeyExists(foundkey)) {
-			printf("ICE: %lu | %lu | %lu \n", start1, end1, elapsed_time);
 			PrintAndLog("Success! Found %u keys after %u seconds", keys_found, elapsed_time);
 			PrintAndLog("\nFound key: %012"PRIx64"\n", foundkey);
 			ret = true;
@@ -1797,8 +1792,10 @@ int mfnestedhard(uint8_t blockNo, uint8_t keyType, uint8_t *key, uint8_t trgBloc
 			if (time1 > 0)
 				PrintAndLog("Time for generating key candidates list: %1.0f seconds", ((float)time1)/CLOCKS_PER_SEC);
 
-			if (cracking)
+			if (cracking || known_target_key != -1) {
 				brute_force();
+			}
+
 		} else { // acquire nonces.
 			uint16_t is_OK = acquire_nonces(blockNo, keyType, key, trgBlockNo, trgKeyType, nonce_file_write, slow);
 			if (is_OK != 0) {
