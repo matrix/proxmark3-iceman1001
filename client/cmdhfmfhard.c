@@ -20,7 +20,7 @@
 #define NONCES_THRESHOLD	5000		// every N nonces check if we can crack the key
 #define CRACKING_THRESHOLD	39.00f		// as 2^39
 
-#define END_OF_LIST_MARKER		0xFFFFFFFF
+#define END_OF_LIST_MARKER	0xFFFFFFFF
 
 static const float p_K[257] = {		// the probability that a random nonce has a Sum Property == K 
 	0.0290, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 
@@ -279,15 +279,16 @@ static float sum_probability(uint16_t K, uint16_t n, uint16_t k)
 	if (k > K || p_K[K] == 0.0) return 0.0;
 
 	double p_T_is_k_when_S_is_K = p_hypergeometric(N, K, n, k);
+	if (p_T_is_k_when_S_is_K == 0.0) return 0.0;
+
 	double p_S_is_K = p_K[K];
-	double p_T_is_k = 0;
+	double p_T_is_k = 0.0;
 	for (uint16_t i = 0; i <= 256; i++) {
 		if (p_K[i] != 0.0) {
-			double tmp = p_hypergeometric(N, i, n, k);
-			if (tmp != 0.0)
-				p_T_is_k += p_K[i] * tmp;
+			p_T_is_k += p_K[i] * p_hypergeometric(N, i, n, k);
 		}
 	}
+	if (p_T_is_k == 0.0) return 0.0;
 	return(p_T_is_k_when_S_is_K * p_S_is_K / p_T_is_k);
 }
 
@@ -842,14 +843,16 @@ static int acquire_nonces(uint8_t blockNo, uint8_t keyType, uint8_t *key, uint8_
 
 			if (total_added_nonces >= (NONCES_THRESHOLD * idx))
 			{
-				num_good_first_bytes = estimate_second_byte_sum();
-				clock_t time1 = clock();
-				bool cracking = generate_candidates(first_byte_Sum, nonces[best_first_bytes[0]].Sum8_guess);
-				time1 = clock() - time1;
-				if (time1 > 0) PrintAndLog("Time for generating key candidates list: %1.0f seconds", ((float)time1)/CLOCKS_PER_SEC);
+				if (num_good_first_bytes > 0 || total_added_nonces >= 40000)
+				{
+					clock_t time1 = clock();
+					bool cracking = generate_candidates(first_byte_Sum, nonces[best_first_bytes[0]].Sum8_guess);
+					time1 = clock() - time1;
+					if (time1 > 0) PrintAndLog("Time for generating key candidates list: %1.0f seconds", ((float)time1)/CLOCKS_PER_SEC);
 
-				if (cracking || known_target_key != -1) {
-					field_off = brute_force(); // switch off field with next SendCommand and then finish
+					if (cracking || known_target_key != -1) {
+						field_off = brute_force(); // switch off field with next SendCommand and then finish
+					}
 				}
 
 				idx++;
@@ -958,7 +961,7 @@ static void init_BitFlip_statelist(void)
 	// set len and add End Of List marker
 	statelist_bitflip.len[0] = p - statelist_bitflip.states[0];
 	*p = END_OF_LIST_MARKER;
-	statelist_bitflip.states[0] = realloc(statelist_bitflip.states[0], sizeof(uint32_t) * (statelist_bitflip.len[0] + 1));
+	//statelist_bitflip.states[0] = realloc(statelist_bitflip.states[0], sizeof(uint32_t) * (statelist_bitflip.len[0] + 1));
 }
 		
 static inline uint32_t *find_first_state(uint32_t state, uint32_t mask, partial_indexed_statelist_t *sl, odd_even_t odd_even)
@@ -1179,7 +1182,7 @@ static int add_matching_states(statelist_t *candidates, uint16_t part_sum_a0, ui
 	for (uint32_t *p1 = partial_statelist[part_sum_a0].states[odd_even]; *p1 != END_OF_LIST_MARKER; p1++) {
 		uint32_t search_mask = 0x000ffff0;
 		uint32_t *p2 = find_first_state((*p1 << 4), search_mask, &partial_statelist[part_sum_a8], odd_even);
-		if (p2 != NULL) {
+		if (p1 != NULL && p2 != NULL) {
 			while (((*p1 << 4) & search_mask) == (*p2 & search_mask) && *p2 != END_OF_LIST_MARKER) {
 				if ((nonces[best_first_bytes[0]].BitFlip[odd_even] && find_first_state((*p1 << 4) | *p2, 0x000fffff, &statelist_bitflip, 0))
 					|| !nonces[best_first_bytes[0]].BitFlip[odd_even]) {
@@ -1217,6 +1220,8 @@ static statelist_t *add_more_candidates(statelist_t *current_candidates)
 	} else {
 		new_candidates = current_candidates->next = (statelist_t *)malloc(sizeof(statelist_t));
 	}
+	if (!new_candidates) return NULL;
+
 	new_candidates->next = NULL;
 	new_candidates->len[ODD_STATE] = 0;
 	new_candidates->len[EVEN_STATE] = 0;
@@ -1309,7 +1314,7 @@ static bool generate_candidates(uint16_t sum_a0, uint16_t sum_a8)
 					for (uint16_t s = 0; s <= 16; s += 2) {
 						if (r*(16-s) + (16-r)*s == sum_a8) {
 							current_candidates = add_more_candidates(current_candidates);
-							if (current_candidates) {
+							if (current_candidates != NULL) {
 								// check for the smallest partial statelist. Try this first - it might give 0 candidates 
 								// and eliminate the need to calculate the other part
 								if (MIN(partial_statelist[p].len[ODD_STATE], partial_statelist[r].len[ODD_STATE]) 
