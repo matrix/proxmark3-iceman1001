@@ -618,13 +618,14 @@ static int read_nonce_file(void)
 	uint32_t nt_enc1 = 0, nt_enc2 = 0;
 	uint8_t par_enc = 0;
 	int total_num_nonces = 0;
-	
+
 	if ((fnonces = fopen("nonces.bin","rb")) == NULL) { 
 		PrintAndLog("Could not open file nonces.bin");
 		return 1;
 	}
 
 	PrintAndLog("Reading nonces from file nonces.bin...");
+	memset (read_buf, 0, sizeof (read_buf));
 	size_t bytes_read = fread(read_buf, 1, 6, fnonces);
 	if ( bytes_read == 0) {
 		PrintAndLog("File reading error.");
@@ -634,17 +635,21 @@ static int read_nonce_file(void)
 	cuid = bytes_to_num(read_buf, 4);
 	trgBlockNo = bytes_to_num(read_buf+4, 1);
 	trgKeyType = bytes_to_num(read_buf+5, 1);
+	size_t ret = 0;
+	do {
+		memset (read_buf, 0, sizeof (read_buf));
+		if ((ret = fread(read_buf, 1, 9, fnonces)) == 9) {
+			nt_enc1 = bytes_to_num(read_buf, 4);
+			nt_enc2 = bytes_to_num(read_buf+4, 4);
+			par_enc = bytes_to_num(read_buf+8, 1);
+			//printf("Encrypted nonce: %08x, encrypted_parity: %02x\n", nt_enc1, par_enc >> 4);
+			//printf("Encrypted nonce: %08x, encrypted_parity: %02x\n", nt_enc2, par_enc & 0x0f);
+			add_nonce(nt_enc1, par_enc >> 4);
+			add_nonce(nt_enc2, par_enc & 0x0f);
+			total_num_nonces += 2;
+		}
+	} while (ret == 9);
 
-	while (fread(read_buf, 1, 9, fnonces) == 9) {
-		nt_enc1 = bytes_to_num(read_buf, 4);
-		nt_enc2 = bytes_to_num(read_buf+4, 4);
-		par_enc = bytes_to_num(read_buf+8, 1);
-		//printf("Encrypted nonce: %08x, encrypted_parity: %02x\n", nt_enc1, par_enc >> 4);
-		//printf("Encrypted nonce: %08x, encrypted_parity: %02x\n", nt_enc2, par_enc & 0x0f);
-		add_nonce(nt_enc1, par_enc >> 4);
-		add_nonce(nt_enc2, par_enc & 0x0f);
-		total_num_nonces += 2;
-	}
 	fclose(fnonces);
 	PrintAndLog("Read %d nonces from file. cuid=%08x, Block=%d, Keytype=%c", total_num_nonces, cuid, trgBlockNo, trgKeyType==0?'A':'B');
 	return 0;
@@ -662,6 +667,8 @@ static void Check_for_FilterFlipProperties(void)
 	}
 	
 	for (uint16_t i = 0; i < 256; i++) {
+		if (!nonces[i].first || !nonces[i^0x80].first || !nonces[i^0x40].first) continue;
+
 		uint8_t parity1 = (nonces[i].first->par_enc) >> 3;				// parity of first byte
 		uint8_t parity2_odd = (nonces[i^0x80].first->par_enc) >> 3;  	// XOR 0x80 = last bit flipped
 		uint8_t parity2_even = (nonces[i^0x40].first->par_enc) >> 3;	// XOR 0x40 = second last bit flipped
@@ -1278,8 +1285,8 @@ static bool TestIfKeyExists(uint64_t key)
 
 static bool generate_candidates(uint16_t sum_a0, uint16_t sum_a8)
 {
-	printf("Generating crypto1 state candidates... \n");
-	
+	printf("Generating crypto1 state candidates (Sum(a0) %d, Sum(a8) %d)\n", sum_a0, sum_a8);
+
 	statelist_t *current_candidates = NULL;
 	// estimate maximum candidate states
 	maximum_states = 0;
