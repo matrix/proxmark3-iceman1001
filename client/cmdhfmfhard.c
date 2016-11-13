@@ -1616,10 +1616,6 @@ static void* crack_states_thread(void* x){
 	size_t current_bucket = thread_id;
 	statelist_t *bucket = NULL;
 
-	if (bucket_count > (current_bucket + thread_count)) {
-		current_bucket += thread_count; // skip "unlucky" first bucket
-	}
-
 	while(current_bucket < bucket_count) {
 		if (keys_found) break;
 
