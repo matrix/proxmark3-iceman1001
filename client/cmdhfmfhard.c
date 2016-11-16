@@ -157,21 +157,24 @@ static int add_nonce(uint32_t nonce_enc, uint8_t par_enc)
 		p2 = p1;
 		p1 = p1->next;
 	}
-	
-	if (p1 == NULL) { 																	// need to add at the end of the list
-		if (p2 == NULL) { 			// list is empty yet. Add first entry.
+
+	if (p1 == NULL) {									// need to add at the end of the list
+		if (p2 == NULL) {								// list is empty yet. Add first entry.
 			p2 = nonces[first_byte].first = malloc(sizeof(noncelistentry_t));
-		} else {					// add new entry at end of existing list.
+		} else {									// add new entry at end of existing list.
 			p2 = p2->next = malloc(sizeof(noncelistentry_t));
 		}
-	} else if ((p1->nonce_enc & 0x00ff0000) != (nonce_enc & 0x00ff0000)) {				// found distinct 2nd byte. Need to insert.
-		if (p2 == NULL) {			// need to insert at start of list
+		if (p2 == NULL) return 0;							// memory allocation failed
+	}
+	else if ((p1->nonce_enc & 0x00ff0000) != (nonce_enc & 0x00ff0000)) {			// found distinct 2nd byte. Need to insert.
+		if (p2 == NULL) {								// need to insert at start of list
 			p2 = nonces[first_byte].first = malloc(sizeof(noncelistentry_t));
 		} else {
 			p2 = p2->next = malloc(sizeof(noncelistentry_t));
 		}
-	} else {											// we have seen this 2nd byte before. Nothing to add or insert. 
-		return (0);
+		if (p2 == NULL) return 0;							// memory allocation failed
+	} else {
+		return 0;									// we have seen this 2nd byte before. Nothing to add or insert.
 	}
 
 	// add or insert new data
@@ -179,16 +182,16 @@ static int add_nonce(uint32_t nonce_enc, uint8_t par_enc)
 	p2->nonce_enc = nonce_enc;
 	p2->par_enc = par_enc;
 
-    if(nonces_to_bruteforce < 256){
-        brute_force_nonces[nonces_to_bruteforce] = p2;
-        nonces_to_bruteforce++;
-    }
+	if(nonces_to_bruteforce < 256){
+		brute_force_nonces[nonces_to_bruteforce] = p2;
+		nonces_to_bruteforce++;
+	}
 
 	nonces[first_byte].num++;
 	nonces[first_byte].Sum += evenparity32((nonce_enc & 0x00ff0000) | (par_enc & 0x04));
 	nonces[first_byte].updated = true;   // indicates that we need to recalculate the Sum(a8) probability for this first byte
 
-	return (1);				// new nonce added
+	return 1;				// new nonce added
 }
 
 static void init_nonce_memory(void)
@@ -1623,10 +1626,16 @@ static void* crack_states_thread(void* x){
 			const uint64_t key = crack_states_bitsliced(bucket);
 
 			if (keys_found) break;
-			else if(key != -1 && TestIfKeyExists(key)) {
-				__sync_fetch_and_add(&keys_found, 1);
-				__sync_fetch_and_add(&foundkey, key);
-				break;
+			else if(key != -1) {
+				if (TestIfKeyExists(key)) {
+					__sync_fetch_and_add(&keys_found, 1);
+					__sync_fetch_and_add(&foundkey, key);
+					printf("*");
+					fflush(stdout);
+					break;
+				}
+				printf("!");
+				fflush(stdout);
 			} else {
 				printf(".");
 				fflush(stdout);
