@@ -10,7 +10,7 @@ local Utils =
 		repeat
 			io.write(message)
 			io.flush()
-			answer=io.read()
+			answer = io.read()
 			if answer == 'Y' or answer == "y" then
 				return true
 			elseif answer == 'N' or answer == 'n' then 
@@ -28,7 +28,7 @@ local Utils =
 		message = message .." \n > "
 		io.write(message)
 		io.flush()
-		answer=io.read()
+		answer = io.read()
 		if answer == '' then answer = default end
 
 		return answer
@@ -47,10 +47,38 @@ local Utils =
 			return nil, string.format("Could not read file %s",filename)
 		end
 		local t = infile:read("*all")
+		io.close(infile)
 		len = string.len(t)
 		local  _,hex = bin.unpack(("H%d"):format(len),t)
-		io.close(infile)
 		return hex
+	end,
+	
+	------------ FILE WRITING (EML)
+	--- Writes an eml-file.
+	-- @param uid - the uid of the tag. Used in filename
+	-- @param blockData. Assumed to be on the format {'\0\1\2\3,'\b\e\e\f' ..., 
+	-- that is, blockData[row] contains a string with the actual data, not ascii hex representation 
+	-- return filename if all went well, 
+	-- @reurn nil, error message if unsuccessfulls	
+	WriteDumpFile = function(uid, blockData)
+		local destination = string.format("%s.eml", uid)
+		local file = io.open(destination, "w")
+		if file == nil then 
+			return nil, string.format("Could not write to file %s", destination)
+		end
+		local rowlen = string.len(blockData[1])
+
+		for i,block in ipairs(blockData) do
+			if rowlen ~= string.len(block) then
+				prlog(string.format("WARNING: Dumpdata seems corrupted, line %d was not the same length as line 1",i))
+			end
+
+			local formatString = string.format("H%d", string.len(block))
+			local _,hex = bin.unpack(formatString,block)
+			file:write(hex.."\n")
+		end
+		file:close()	
+		return destination
 	end,
 	
 	------------ string split function
@@ -112,7 +140,7 @@ local Utils =
 	
 	
 	------------ CRC-64 ecma checksums
-	-- Takes a hex string and calculates a crc64 ecma
+	-- Takes a hex string and calculates a crc64 ecma hash
 	Crc64 = function(s)
 		if s == nil then return nil end
 		if #s == 0 then return nil end
@@ -124,6 +152,19 @@ local Utils =
 		end
 		return nil
 	end,
+	------------ CRC-64 ecma 182 checksums
+	-- Takes a hex string and calculates a crc64 ecma182 hash
+	Crc64_ecma182 = function(s)
+		if s == nil then return nil end
+		if #s == 0 then return nil end
+		if  type(s) == 'string' then
+			local utils = require('utils')
+			local asc = utils.ConvertHexToAscii(s)
+			local hash = core.crc64_ecma182(asc)
+			return hash
+		end
+		return nil
+	end,
 
 	------------ SHA1 hash
 	-- Takes a string and calculates a SHA1 hash
@@ -131,10 +172,7 @@ local Utils =
 		if s == nil then return nil end
 		if #s == 0 then return nil end
 		if  type(s) == 'string' then
-			local utils = require('utils')
-			--local asc = utils.ConvertHexToAscii(s)
-			local hash = core.sha1(s)
-			return hash
+			return core.sha1(s)
 		end
 		return nil
 	end,	
@@ -197,11 +235,11 @@ local Utils =
 	--
 	-- Converts DECIMAL to HEX
     ConvertDecToHex = function(IN)
-		local B,K,OUT,I,D=16,"0123456789ABCDEF","",0
-		while IN>0 do
-			I=I+1
-			IN , D = math.floor(IN/B), math.modf(IN,B)+1
-			OUT = string.sub(K,D,D)..OUT
+		local B,K,OUT,I,D = 16, "0123456789ABCDEF", "", 0
+		while IN > 0 do
+			I = I+1
+			IN, D = math.floor(IN/B), math.modf(IN, B) + 1
+			OUT = string.sub(K, D, D)..OUT
 		end
 		return OUT
 	end,
@@ -257,12 +295,20 @@ local Utils =
 		return rev
 	end,
 	
-	ConvertHexToAscii = function(s)
+	ConvertHexToAscii = function(s, useSafechars)
 		if s == nil then return '' end
 		if #s == 0 then return '' end
 		local t={}
 		for k in s:gmatch"(%x%x)" do
-			table.insert(t, string.char(tonumber(k,16)))
+
+			local n = tonumber(k,16)		
+			local c 
+			if useSafechars and ( (n < 32) or (n == 127) ) then
+				c = '.';
+			else
+				c = string.char(n)
+			end
+			table.insert(t,c)
 		end
 		return table.concat(t)	
 	end,
@@ -277,23 +323,28 @@ local Utils =
 		return table.concat(t)
 	end,
 	
+	hexlify = function(s)
+		local u = require('utils')
+		return u.ConvertAsciiToHex(s)
+	end,
+	
 	Chars2num = function(s)
         return (s:byte(1)*16777216)+(s:byte(2)*65536)+(s:byte(3)*256)+(s:byte(4))
 	end,
 	
 	-- use length of string to determine 8,16,32,64 bits
 	bytes_to_int = function(str,endian,signed) 
-		local t={str:byte(1,-1)}
-		if endian=="big" then --reverse bytes
-			local tt={}
-			for k=1,#t do
-				tt[#t-k+1]=t[k]
+		local t = {str:byte(1, -1)}
+		if endian == "big" then --reverse bytes
+			local tt = {}
+			for k = 1, #t do
+				tt[#t-k+1] = t[k]
 			end
-			t=tt
+			t = tt
 		end
-		local n=0
-		for k=1,#t do
-			n=n+t[k]*2^((k-1)*8)
+		local n = 0
+		for k = 1, #t do
+			n = n + t[k] * 2^((k-1) * 8)
 		end
 		if signed then
 			n = (n > 2^(#t*8-1) -1) and (n - 2^(#t*8)) or n -- if last bit set, negative.

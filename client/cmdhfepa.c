@@ -7,15 +7,6 @@
 //-----------------------------------------------------------------------------
 // Commands related to the German electronic Identification Card
 //-----------------------------------------------------------------------------
-
-#include "util.h"
-
-#include "proxmark3.h"
-#include "ui.h"
-#include "cmdparser.h"
-#include "common.h"
-#include "cmdmain.h"
-#include "sleep.h"
 #include "cmdhfepa.h"
 
 static int CmdHelp(const char *Cmd);
@@ -24,11 +15,11 @@ static int CmdHelp(const char *Cmd);
 int CmdHFEPACollectPACENonces(const char *Cmd)
 {
 	// requested nonce size
-	unsigned int m = 0;
+	uint32_t m = 0;
 	// requested number of Nonces
-	unsigned int n = 0;
+	uint32_t n = 0;
 	// delay between requests
-	unsigned int d = 0;
+	uint32_t d = 0;
 
 	sscanf(Cmd, "%u %u %u", &m, &n, &d);
 
@@ -36,20 +27,20 @@ int CmdHFEPACollectPACENonces(const char *Cmd)
 	m = m > 0 ? m : 1;
 	n = n > 0 ? n : 1;
 
-	PrintAndLog("Collecting %u %"hhu"-byte nonces", n, m);
-	PrintAndLog("Start: %u", time(NULL));
+	PrintAndLogEx(NORMAL, "Collecting %u %u byte nonces", n, m);
+	PrintAndLogEx(NORMAL, "Start: %" PRIu64, msclock()/1000);
 	// repeat n times
-	for (unsigned int i = 0; i < n; i++) {
+	for (uint32_t i = 0; i < n; i++) {
 		// execute PACE
 		UsbCommand c = {CMD_EPA_PACE_COLLECT_NONCE, {(int)m, 0, 0}};
+		clearCommandBuffer();
 		SendCommand(&c);
 		UsbCommand resp;
-
 		WaitForResponse(CMD_ACK,&resp);
 
 		// check if command failed
 		if (resp.arg[0] != 0) {
-			PrintAndLog("Error in step %d, Return code: %d",resp.arg[0],(int)resp.arg[1]);
+			PrintAndLogEx(FAILED, "Error in step %d, Return code: %d",resp.arg[0],(int)resp.arg[1]);
 		} else {
 			size_t nonce_length = resp.arg[1];
 			char *nonce = (char *) malloc(2 * nonce_length + 1);
@@ -57,19 +48,16 @@ int CmdHFEPACollectPACENonces(const char *Cmd)
 				sprintf(nonce + (2 * j), "%02X", resp.d.asBytes[j]);
 			}
 			// print nonce
-			PrintAndLog("Length: %d, Nonce: %s", nonce_length, nonce);
+			PrintAndLogEx(NORMAL, "Length: %d, Nonce: %s", nonce_length, nonce);
 			free(nonce);
 		}
 		if (i < n - 1) {
 			sleep(d);
 		}
 	}
-	PrintAndLog("End: %u", time(NULL));
+	PrintAndLogEx(NORMAL, "End: %" PRIu64, msclock()/1000);
 	return 1;
 }
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////The commands lie below here/////////////////////////////////////////////////////////////////////////////////////////
 
 // perform the PACE protocol by replaying APDUs
 int CmdHFEPAPACEReplay(const char *Cmd)
@@ -98,8 +86,8 @@ int CmdHFEPAPACEReplay(const char *Cmd)
 			                     (unsigned int *) (apdus[i] + apdu_lengths[i]),
 			                     &skip_add);
 			if (scan_return < 1) {
-				PrintAndLog((char *)usage_msg);
-				PrintAndLog("Not enough APDUs! Try again!");
+				PrintAndLogEx(NORMAL, (char *)usage_msg);
+				PrintAndLogEx(WARNING, "Not enough APDUs! Try again!");
 				return 0;
 			}
 			skip += skip_add;
@@ -110,7 +98,7 @@ int CmdHFEPAPACEReplay(const char *Cmd)
 		if (Cmd[skip] == '\0') {
 			if (i < sizeof(apdu_lengths) - 1) {
 
-				PrintAndLog((char *)usage_msg);
+				PrintAndLogEx(NORMAL, (char *)usage_msg);
 				return 0;
 			}
 			break;
@@ -139,10 +127,12 @@ int CmdHFEPAPACEReplay(const char *Cmd)
 			memcpy(usb_cmd.d.asBytes, // + (j * sizeof(usb_cmd.d.asBytes)),
 			       apdus[i] + (j * sizeof(usb_cmd.d.asBytes)),
 			       packet_length);
+				   
+			clearCommandBuffer();				   
 			SendCommand(&usb_cmd);
 			WaitForResponse(CMD_ACK, &resp);
 			if (resp.arg[0] != 0) {
-				PrintAndLog("Transfer of APDU #%d Part %d failed!", i, j);
+				PrintAndLogEx(WARNING, "Transfer of APDU #%d Part %d failed!", i, j);
 				return 0;
 			}
 		}
@@ -150,53 +140,42 @@ int CmdHFEPAPACEReplay(const char *Cmd)
 
 	// now perform the replay
 	usb_cmd.arg[0] = 0;
+	clearCommandBuffer();
 	SendCommand(&usb_cmd);
 	WaitForResponse(CMD_ACK, &resp);
 	if (resp.arg[0] != 0) {
-		PrintAndLog("\nPACE replay failed in step %u!", (uint32_t)resp.arg[0]);
-		PrintAndLog("Measured times:");
-		PrintAndLog("MSE Set AT: %u us", resp.d.asDwords[0]);
-		PrintAndLog("GA Get Nonce: %u us", resp.d.asDwords[1]);
-		PrintAndLog("GA Map Nonce: %u us", resp.d.asDwords[2]);
-		PrintAndLog("GA Perform Key Agreement: %u us", resp.d.asDwords[3]);
-		PrintAndLog("GA Mutual Authenticate: %u us", resp.d.asDwords[4]);
+		PrintAndLogEx(NORMAL, "\nPACE replay failed in step %u!", (uint32_t)resp.arg[0]);
+		PrintAndLogEx(NORMAL, "Measured times:");
+		PrintAndLogEx(NORMAL, "MSE Set AT: %u us", resp.d.asDwords[0]);
+		PrintAndLogEx(NORMAL, "GA Get Nonce: %u us", resp.d.asDwords[1]);
+		PrintAndLogEx(NORMAL, "GA Map Nonce: %u us", resp.d.asDwords[2]);
+		PrintAndLogEx(NORMAL, "GA Perform Key Agreement: %u us", resp.d.asDwords[3]);
+		PrintAndLogEx(NORMAL, "GA Mutual Authenticate: %u us", resp.d.asDwords[4]);
 	} else {
-		PrintAndLog("PACE replay successfull!");
-		PrintAndLog("MSE Set AT: %u us", resp.d.asDwords[0]);
-		PrintAndLog("GA Get Nonce: %u us", resp.d.asDwords[1]);
-		PrintAndLog("GA Map Nonce: %u us", resp.d.asDwords[2]);
-		PrintAndLog("GA Perform Key Agreement: %u us", resp.d.asDwords[3]);
-		PrintAndLog("GA Mutual Authenticate: %u us", resp.d.asDwords[4]);
+		PrintAndLogEx(NORMAL, "PACE replay successfull!");
+		PrintAndLogEx(NORMAL, "MSE Set AT: %u us", resp.d.asDwords[0]);
+		PrintAndLogEx(NORMAL, "GA Get Nonce: %u us", resp.d.asDwords[1]);
+		PrintAndLogEx(NORMAL, "GA Map Nonce: %u us", resp.d.asDwords[2]);
+		PrintAndLogEx(NORMAL, "GA Perform Key Agreement: %u us", resp.d.asDwords[3]);
+		PrintAndLogEx(NORMAL, "GA Mutual Authenticate: %u us", resp.d.asDwords[4]);
 	}
-
-
 	return 1;
 }
 
-////////////////////////////////The new commands lie above here/////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-// UI-related stuff
-
-static const command_t CommandTable[] = {
-  {"help",    CmdHelp,                   1, "This help"},
-  {"cnonces", CmdHFEPACollectPACENonces, 0,
-              "<m> <n> <d> Acquire n>0 encrypted PACE nonces of size m>0 with d sec pauses"},
-  {"preplay", CmdHFEPAPACEReplay,        0,
-   "<mse> <get> <map> <pka> <ma> Perform PACE protocol by replaying given APDUs"},
-  {NULL, NULL, 0, NULL}
+static command_t CommandTable[] = {
+	{"help",    CmdHelp,                   1, "This help"},
+	{"cnonces", CmdHFEPACollectPACENonces, 0, "<m> <n> <d> Acquire n>0 encrypted PACE nonces of size m>0 with d sec pauses"},
+	{"preplay", CmdHFEPAPACEReplay,        0, "<mse> <get> <map> <pka> <ma> Perform PACE protocol by replaying given APDUs"},
+ 	{NULL, NULL, 0, NULL}
 };
 
 int CmdHelp(const char *Cmd) {
-  CmdsHelp(CommandTable);
-  return 0;
+ 	CmdsHelp(CommandTable);
+	return 0;
 }
 
 int CmdHFEPA(const char *Cmd) {
-	// flush
 	clearCommandBuffer();
-	//WaitForResponseTimeout(CMD_ACK,NULL,100);
-	// parse
 	CmdsParse(CommandTable, Cmd);
 	return 0;
 }

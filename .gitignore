@@ -14,16 +14,25 @@
 *.dll
 *.moc.cpp
 *.z
+*.Td
+*.DS_Store
 *.exe
 *.dsym
+version.c
+
+!client/hardnested/*.bin
+!client/hardnested/tables/*.z
+client/ui/ui_overlays.h
+
 hardnested_stats.txt
-proxmark
 proxmark3
 flasher
-fpga_compress
-version.c
 lua
 luac
+fpga_compress
+mfkey32
+mfkey64
+tools/nonce2key/nonce2key
 
 fpga/*
 !fpga/tests
@@ -38,4 +47,17 @@ fpga/*
 !fpga/sim.tcl
 
 #client/*
+# my own traces folder
 client/traces/*
+*.ice
+*.new
+armsrc/TEMP EMV/*
+tools/mf_nonce_brute/*
+tools/andrew/*
+ppls patches/*
+*- Copy.*
+
+client/lualibs/mf_default_keys.lua
+client/lualibs/usb_cmd.lua
+# recompiled
+fpga_version_info.c

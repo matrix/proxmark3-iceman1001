@@ -1,10 +1,7 @@
-#include <stdint.h>
-#include <stddef.h>
 #include "crc32.h"
 
 #define htole32(x) (x)
 #define CRC32_PRESET 0xFFFFFFFF
-
 
 static void crc32_byte (uint32_t *crc, const uint8_t value);
 
@@ -21,7 +18,7 @@ static void crc32_byte (uint32_t *crc, const uint8_t value) {
     }
 }
 
-void crc32 (const uint8_t *data, const size_t len, uint8_t *crc) {
+void crc32_ex (const uint8_t *data, const size_t len, uint8_t *crc) {
     uint32_t desfire_crc = CRC32_PRESET;
     for (size_t i = 0; i < len; i++) {
         crc32_byte (&desfire_crc, data[i]);
@@ -31,5 +28,5 @@ void crc32 (const uint8_t *data, const size_t len, uint8_t *crc) {
 }
 
 void crc32_append (uint8_t *data, const size_t len) {
-    crc32 (data, len, data + len);
+    crc32_ex (data, len, data + len);
 }

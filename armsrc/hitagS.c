@@ -116,7 +116,7 @@ static u32 hitag2_byte(u64 *x) {
 
 #define HITAG_FRAME_LEN 					20
 #define HITAG_T_STOP  						36  /* T_EOF should be > 36 */
-#define HITAG_T_LOW						8   /* T_LOW should be 4..10 */
+#define HITAG_T_LOW							8   /* T_LOW should be 4..10 */
 #define HITAG_T_0_MIN 						15  /* T[0] should be 18..22 */
 #define HITAG_T_1_MIN 						25  /* T[1] should be 26..30 */
 //#define HITAG_T_EOF   40 /* T_EOF should be > 36 */
@@ -127,16 +127,16 @@ static u32 hitag2_byte(u64 *x) {
 
 #define HITAG_T_TAG_ONE_HALF_PERIOD				10
 #define HITAG_T_TAG_TWO_HALF_PERIOD				25
-#define HITAG_T_TAG_THREE_HALF_PERIOD				41 
-#define HITAG_T_TAG_FOUR_HALF_PERIOD    			57
+#define HITAG_T_TAG_THREE_HALF_PERIOD			41 
+#define HITAG_T_TAG_FOUR_HALF_PERIOD    		57
 	
 #define HITAG_T_TAG_HALF_PERIOD					16
 #define HITAG_T_TAG_FULL_PERIOD					32
 	
-#define HITAG_T_TAG_CAPTURE_ONE_HALF				13
-#define HITAG_T_TAG_CAPTURE_TWO_HALF				25
-#define HITAG_T_TAG_CAPTURE_THREE_HALF				41
-#define HITAG_T_TAG_CAPTURE_FOUR_HALF   			57
+#define HITAG_T_TAG_CAPTURE_ONE_HALF			13
+#define HITAG_T_TAG_CAPTURE_TWO_HALF			25
+#define HITAG_T_TAG_CAPTURE_THREE_HALF			41
+#define HITAG_T_TAG_CAPTURE_FOUR_HALF   		57
 
 #define DEBUG 0
 
@@ -167,25 +167,25 @@ static void hitag_send_bit(int bit) {
 		if (bit == 0) {
 			// AC Coding --__
 			HIGH(GPIO_SSC_DOUT);
-			while (AT91C_BASE_TC0->TC_CV < T0 * 32)
-				;
+			while (AT91C_BASE_TC0->TC_CV < T0 * 32) {};
+				
 			LOW(GPIO_SSC_DOUT);
-			while (AT91C_BASE_TC0->TC_CV < T0 * 64)
-				;
+			while (AT91C_BASE_TC0->TC_CV < T0 * 64)	{};
+				
 		} else {
 			// AC coding -_-_
 			HIGH(GPIO_SSC_DOUT);
-			while (AT91C_BASE_TC0->TC_CV < T0 * 16)
-				;
+			while (AT91C_BASE_TC0->TC_CV < T0 * 16) {};
+				
 			LOW(GPIO_SSC_DOUT);
-			while (AT91C_BASE_TC0->TC_CV < T0 * 32)
-				;
+			while (AT91C_BASE_TC0->TC_CV < T0 * 32) {};
+				
 			HIGH(GPIO_SSC_DOUT);
-			while (AT91C_BASE_TC0->TC_CV < T0 * 48)
-				;
+			while (AT91C_BASE_TC0->TC_CV < T0 * 48) {};
+				
 			LOW(GPIO_SSC_DOUT);
-			while (AT91C_BASE_TC0->TC_CV < T0 * 64)
-				;;
+			while (AT91C_BASE_TC0->TC_CV < T0 * 64) {};
+				
 		}
 		LED_A_OFF();
 		break;
@@ -193,25 +193,24 @@ static void hitag_send_bit(int bit) {
 		if (bit == 0) {
 			// AC Coding --__
 			HIGH(GPIO_SSC_DOUT);
-			while (AT91C_BASE_TC0->TC_CV < T0 * HITAG_T_TAG_HALF_PERIOD)
-				;
+			while (AT91C_BASE_TC0->TC_CV < T0 * HITAG_T_TAG_HALF_PERIOD) {};
+				
 			LOW(GPIO_SSC_DOUT);
-			while (AT91C_BASE_TC0->TC_CV < T0 * HITAG_T_TAG_FULL_PERIOD)
-				;
+			while (AT91C_BASE_TC0->TC_CV < T0 * HITAG_T_TAG_FULL_PERIOD) {};
+				
 		} else {
 			// AC coding -_-_
 			HIGH(GPIO_SSC_DOUT);
-			while (AT91C_BASE_TC0->TC_CV < T0 * 8)
-				;
+			while (AT91C_BASE_TC0->TC_CV < T0 * 8) {};
+				
 			LOW(GPIO_SSC_DOUT);
-			while (AT91C_BASE_TC0->TC_CV < T0 * 16)
-				;
+			while (AT91C_BASE_TC0->TC_CV < T0 * 16) {};
+				
 			HIGH(GPIO_SSC_DOUT);
-			while (AT91C_BASE_TC0->TC_CV < T0 * 24)
-				;
+			while (AT91C_BASE_TC0->TC_CV < T0 * 24) {};
+				
 			LOW(GPIO_SSC_DOUT);
-			while (AT91C_BASE_TC0->TC_CV < T0 * 32)
-				;;
+			while (AT91C_BASE_TC0->TC_CV < T0 * 32) {};
 		}
 		LED_A_OFF();
 		break;
@@ -219,19 +218,19 @@ static void hitag_send_bit(int bit) {
 		if (bit == 0) {
 			// Manchester: Unloaded, then loaded |__--|
 			LOW(GPIO_SSC_DOUT);
-			while (AT91C_BASE_TC0->TC_CV < T0 * 16)
-				;
+			while (AT91C_BASE_TC0->TC_CV < T0 * 16) {};
+				
 			HIGH(GPIO_SSC_DOUT);
-			while (AT91C_BASE_TC0->TC_CV < T0 * 32)
-				;
+			while (AT91C_BASE_TC0->TC_CV < T0 * 32) {};
+				
 		} else {
 			// Manchester: Loaded, then unloaded |--__|
 			HIGH(GPIO_SSC_DOUT);
-			while (AT91C_BASE_TC0->TC_CV < T0 * 16)
-				;
+			while (AT91C_BASE_TC0->TC_CV < T0 * 16) {};
+				
 			LOW(GPIO_SSC_DOUT);
-			while (AT91C_BASE_TC0->TC_CV < T0 * 32)
-				;
+			while (AT91C_BASE_TC0->TC_CV < T0 * 32) {};
+				
 		}
 		LED_A_OFF();
 		break;
@@ -239,19 +238,19 @@ static void hitag_send_bit(int bit) {
 		if (bit == 0) {
 			// Manchester: Unloaded, then loaded |__--|
 			LOW(GPIO_SSC_DOUT);
-			while (AT91C_BASE_TC0->TC_CV < T0 * 8)
-				;
+			while (AT91C_BASE_TC0->TC_CV < T0 * 8) {};
+				
 			HIGH(GPIO_SSC_DOUT);
-			while (AT91C_BASE_TC0->TC_CV < T0 * 16)
-				;
+			while (AT91C_BASE_TC0->TC_CV < T0 * 16) {};
+				
 		} else {
 			// Manchester: Loaded, then unloaded |--__|
 			HIGH(GPIO_SSC_DOUT);
-			while (AT91C_BASE_TC0->TC_CV < T0 * 8)
-				;
+			while (AT91C_BASE_TC0->TC_CV < T0 * 8) {};
+				
 			LOW(GPIO_SSC_DOUT);
-			while (AT91C_BASE_TC0->TC_CV < T0 * 16)
-				;
+			while (AT91C_BASE_TC0->TC_CV < T0 * 16) {};
+				
 		}
 		LED_A_OFF();
 		break;
@@ -288,8 +287,8 @@ static void hitag_reader_send_bit(int bit) {
 	HIGH(GPIO_SSC_DOUT);
 	if (test == 1) {
 		// Wait for 4-10 times the carrier period
-		while (AT91C_BASE_TC0->TC_CV < T0 * 6)
-			;
+		while (AT91C_BASE_TC0->TC_CV < T0 * 6) {};
+			
 		//	SpinDelayUs(8*8);
 
 		// Disable modulation, just activates the field again
@@ -297,19 +296,19 @@ static void hitag_reader_send_bit(int bit) {
 
 		if (bit == 0) {
 			// Zero bit: |_-|
-			while (AT91C_BASE_TC0->TC_CV < T0 * 11)
-				;
+			while (AT91C_BASE_TC0->TC_CV < T0 * 11) {};
+				
 			//		SpinDelayUs(16*8);
 		} else {
 			// One bit: |_--|
-			while (AT91C_BASE_TC0->TC_CV < T0 * 14)
-				;
+			while (AT91C_BASE_TC0->TC_CV < T0 * 14) {};
+				
 			//		SpinDelayUs(22*8);
 		}
 	} else {
 		// Wait for 4-10 times the carrier period
-		while (AT91C_BASE_TC0->TC_CV < T0 * 6)
-			;
+		while (AT91C_BASE_TC0->TC_CV < T0 * 6) {};
+			
 		//	SpinDelayUs(8*8);
 
 		// Disable modulation, just activates the field again
@@ -317,13 +316,13 @@ static void hitag_reader_send_bit(int bit) {
 
 		if (bit == 0) {
 			// Zero bit: |_-|
-			while (AT91C_BASE_TC0->TC_CV < T0 * 22)
-				;
+			while (AT91C_BASE_TC0->TC_CV < T0 * 22) {};
+				
 			//		SpinDelayUs(16*8);
 		} else {
 			// One bit: |_--|
-			while (AT91C_BASE_TC0->TC_CV < T0 * 28)
-				;
+			while (AT91C_BASE_TC0->TC_CV < T0 * 28) {};
+				
 			//		SpinDelayUs(22*8);
 		}
 	}
@@ -344,8 +343,8 @@ static void hitag_reader_send_frame(const byte_t* frame, size_t frame_len) {
 // Enable modulation, which means, drop the the field
 	HIGH(GPIO_SSC_DOUT);
 // Wait for 4-10 times the carrier period
-	while (AT91C_BASE_TC0->TC_CV < T0 * 6)
-		;
+	while (AT91C_BASE_TC0->TC_CV < T0 * 6) {};
+		
 // Disable modulation, just activates the field again
 	LOW(GPIO_SSC_DOUT);
 }
@@ -955,14 +954,13 @@ void SimulateHitagSTag(bool tag_mem_supplied, byte_t* data) {
 	BigBuf_free(); BigBuf_Clear_ext(false);
 
 	// Clean up trace and prepare it for storing frames
-	set_tracing(TRUE);
+	set_tracing(true);
 	clear_trace();
 
 	DbpString("Starting HitagS simulation");
 	LED_D_ON();
 
 	tag.pstate = HT_READY;
-	tag.tstate = HT_NO_OP;
 	tag.tstate = HT_NO_OP;
 	for (i = 0; i < 16; i++)
 		for (j = 0; j < 4; j++)
@@ -988,45 +986,46 @@ void SimulateHitagSTag(bool tag_mem_supplied, byte_t* data) {
 		tag.max_page=0;
 	//con1
 	tag.auth=0;
-	if((tag.pages[1][2]&0x80)==1)
+	if((tag.pages[1][2]&0x80) == 0x80)
 		tag.auth=1;
 	tag.LCON=0;
-	if((tag.pages[1][2]&0x2)==1)
+	if((tag.pages[1][2]&0x2) == 0x02)
 		tag.LCON=1;
 	tag.LKP=0;
-	if((tag.pages[1][2]&0x1)==1)
+	if((tag.pages[1][2]&0x1) == 0x01)
 		tag.LKP=1;
 	//con2
 	//0=read write 1=read only
 	tag.LCK7=0;
-	if((tag.pages[1][1]&0x80)==1)
+	if((tag.pages[1][1]&0x80) == 0x80)
 		tag.LCK7=1;
 	tag.LCK6=0;
-	if((tag.pages[1][1]&0x40)==1)
+	if((tag.pages[1][1]&0x40) == 0x040)
 		tag.LCK6=1;
 	tag.LCK5=0;
-	if((tag.pages[1][1]&0x20)==1)
+	if((tag.pages[1][1]&0x20) == 0x20)
 		tag.LCK5=1;
 	tag.LCK4=0;
-	if((tag.pages[1][1]&0x10)==1)
+	if((tag.pages[1][1]&0x10) == 0x10)
 		tag.LCK4=1;
 	tag.LCK3=0;
-	if((tag.pages[1][1]&0x8)==1)
+	if((tag.pages[1][1]&0x8) == 0x08)
 		tag.LCK3=1;
 	tag.LCK2=0;
-	if((tag.pages[1][1]&0x4)==1)
+	if((tag.pages[1][1]&0x4) == 0x04)
 		tag.LCK2=1;
 	tag.LCK1=0;
-	if((tag.pages[1][1]&0x2)==1)
+	if((tag.pages[1][1]&0x2) == 0x02)
 		tag.LCK1=1;
 	tag.LCK0=0;
-	if((tag.pages[1][1]&0x1)==1)
+	if((tag.pages[1][1]&0x1) == 0x01)
 		tag.LCK0=1;
 
 // Set up simulator mode, frequency divisor which will drive the FPGA
 // and analog mux selection.
 	FpgaDownloadAndGo(FPGA_BITSTREAM_LF);
-	FpgaWriteConfWord(FPGA_MAJOR_MODE_LF_EDGE_DETECT | FPGA_LF_EDGE_DETECT_READER_FIELD);
+	FpgaWriteConfWord(FPGA_MAJOR_MODE_LF_EDGE_DETECT);
+	SpinDelay(20);
 	FpgaSendCommand(FPGA_CMD_SET_DIVISOR, 95); //125Khz
 	SetAdcMuxFor(GPIO_MUXSEL_LOPKD);
 	RELAY_OFF();
@@ -1179,7 +1178,7 @@ void ReadHitagS(hitag_function htf, hitag_data* htd) {
 	int reset_sof;
 	int tag_sof;
 	int t_wait = HITAG_T_WAIT_MAX;
-	bool bStop;
+	bool bStop = false;
 	bool bQuitTraceFull = false;
 	int sendNum = 0;
 	unsigned char mask = 1;
@@ -1189,22 +1188,22 @@ void ReadHitagS(hitag_function htf, hitag_data* htd) {
 	
 	//read given key/challenge
 	byte_t NrAr_[8];
-	uint64_t key=0;
-	uint64_t NrAr=0;
+	uint64_t key = 0;
+	uint64_t NrAr = 0;
 	byte_t key_[6];
-	switch(htf) {
+	switch (htf) {
 		case 01: { //RHTS_CHALLENGE
 			DbpString("Authenticating using nr,ar pair:");
-			memcpy(NrAr_,htd->auth.NrAr,8);
-			Dbhexdump(8,NrAr_,false);
-			NrAr=NrAr_[7] | ((uint64_t)NrAr_[6]) << 8 | ((uint64_t)NrAr_[5]) << 16 | ((uint64_t)NrAr_[4]) << 24 | ((uint64_t)NrAr_[3]) << 32 |
+			memcpy(NrAr_, htd->auth.NrAr, 8);
+			Dbhexdump(8, NrAr_, false);
+			NrAr = NrAr_[7] | ((uint64_t)NrAr_[6]) << 8 | ((uint64_t)NrAr_[5]) << 16 | ((uint64_t)NrAr_[4]) << 24 | ((uint64_t)NrAr_[3]) << 32 |
 				        ((uint64_t)NrAr_[2]) << 40| ((uint64_t)NrAr_[1]) << 48 | ((uint64_t)NrAr_[0]) << 56;
 		} break;
 		case 02: { //RHTS_KEY
 			DbpString("Authenticating using key:");
-			memcpy(key_,htd->crypto.key,6);	 
-			Dbhexdump(6,key_,false);
-			key=key_[5] | ((uint64_t)key_[4]) << 8 | ((uint64_t)key_[3]) << 16 | ((uint64_t)key_[2]) << 24 | ((uint64_t)key_[1]) << 32 | ((uint64_t)key_[0]) << 40;
+			memcpy(key_, htd->crypto.key, 6);
+			Dbhexdump(6, key_, false);
+			key = key_[5] | ((uint64_t)key_[4]) << 8 | ((uint64_t)key_[3]) << 16 | ((uint64_t)key_[2]) << 24 | ((uint64_t)key_[1]) << 32 | ((uint64_t)key_[0]) << 40;
 		} break;
 		default: {
 			Dbprintf("Error , unknown function: %d",htf);
@@ -1212,14 +1211,12 @@ void ReadHitagS(hitag_function htf, hitag_data* htd) {
 		} break;
 	}
 
-
-
 	FpgaDownloadAndGo(FPGA_BITSTREAM_LF);
-// Reset the return status
+	// Reset the return status
 	bSuccessful = false;
 
-// Clean up trace and prepare it for storing frames
-	set_tracing(TRUE);
+	// Clean up trace and prepare it for storing frames
+	set_tracing(true);
 	clear_trace();
 
 	bQuiet = false;
@@ -1227,46 +1224,48 @@ void ReadHitagS(hitag_function htf, hitag_data* htd) {
 
 	LED_D_ON();
 
-// Configure output and enable pin that is connected to the FPGA (for modulating)
+	// Configure output and enable pin that is connected to the FPGA (for modulating)
 	AT91C_BASE_PIOA->PIO_OER = GPIO_SSC_DOUT;
 	AT91C_BASE_PIOA->PIO_PER = GPIO_SSC_DOUT;
 
-// Set fpga in edge detect with reader field, we can modulate as reader now
+	// Set fpga in edge detect with reader field, we can modulate as reader now
 	FpgaWriteConfWord(
 	FPGA_MAJOR_MODE_LF_EDGE_DETECT | FPGA_LF_EDGE_DETECT_READER_FIELD);
 
-// Set Frequency divisor which will drive the FPGA and analog mux selection
+	// Set Frequency divisor which will drive the FPGA and analog mux selection
 	FpgaSendCommand(FPGA_CMD_SET_DIVISOR, 95);					//125Khz
 	SetAdcMuxFor(GPIO_MUXSEL_LOPKD);
 	RELAY_OFF();
 
-// Disable modulation at default, which means enable the field
+	// Disable modulation at default, which means enable the field
 	LOW(GPIO_SSC_DOUT);
 
-// Give it a bit of time for the resonant antenna to settle.
+	// Give it a bit of time for the resonant antenna to settle.
 	SpinDelay(30);
 
-// Enable Peripheral Clock for TIMER_CLOCK0, used to measure exact timing before answering
+	// Enable Peripheral Clock for TIMER_CLOCK0, used to measure exact timing before answering
 	AT91C_BASE_PMC->PMC_PCER = (1 << AT91C_ID_TC0);
 
-// Enable Peripheral Clock for TIMER_CLOCK1, used to capture edges of the tag frames
+	// Enable Peripheral Clock for TIMER_CLOCK1, used to capture edges of the tag frames
 	AT91C_BASE_PMC->PMC_PCER = (1 << AT91C_ID_TC1);
 	AT91C_BASE_PIOA->PIO_BSR = GPIO_SSC_FRAME;
 
-// Disable timer during configuration
+	// Disable timer during configuration
 	AT91C_BASE_TC1->TC_CCR = AT91C_TC_CLKDIS;
 
-// Capture mode, defaul timer source = MCK/2 (TIMER_CLOCK1), TIOA is external trigger,
-// external trigger rising edge, load RA on falling edge of TIOA.
-	AT91C_BASE_TC1->TC_CMR = AT91C_TC_CLKS_TIMER_DIV1_CLOCK
+	// Capture mode, defaul timer source = MCK/2 (TIMER_CLOCK1), TIOA is external trigger,
+	// external trigger rising edge, load RA on falling edge of TIOA.
+	AT91C_BASE_TC1->TC_CMR = 
+		AT91C_TC_CLKS_TIMER_DIV1_CLOCK 	|
+		AT91C_TC_ETRGEDG_FALLING 		| 
+		AT91C_TC_ABETRG 				| 
+		AT91C_TC_LDRA_FALLING;
 
-	| AT91C_TC_ETRGEDG_FALLING | AT91C_TC_ABETRG | AT91C_TC_LDRA_FALLING;
-
-// Enable and reset counters
+	// Enable and reset counters
 	AT91C_BASE_TC0->TC_CCR = AT91C_TC_CLKEN | AT91C_TC_SWTRG;
 	AT91C_BASE_TC1->TC_CCR = AT91C_TC_CLKEN | AT91C_TC_SWTRG;
 
-// Reset the received frame, frame count and timing info
+	// Reset the received frame, frame count and timing info
 	frame_count = 0;
 	response = 0;
 	lastbit = 1;
@@ -1401,9 +1400,7 @@ void ReadHitagS(hitag_function htf, hitag_data* htd) {
 		// we need to wait (T_Wait2 + half_tag_period) when the last was a 'one'.
 		// All timer values are in terms of T0 units
 
-		while (AT91C_BASE_TC0->TC_CV
-				< T0 * (t_wait + (HITAG_T_TAG_HALF_PERIOD * lastbit)))
-			;
+		while (AT91C_BASE_TC0->TC_CV < T0 * (t_wait + (HITAG_T_TAG_HALF_PERIOD * lastbit))) {};
 
 		// Transmit the reader frame
 		hitag_reader_send_frame(tx, txlen);
@@ -1494,12 +1491,13 @@ void ReadHitagS(hitag_function htf, hitag_data* htd) {
 			}
 		}
 	}
-	end=false;
+	end = false;
 	LED_B_OFF();
 	LED_D_OFF();
 	AT91C_BASE_TC1->TC_CCR = AT91C_TC_CLKDIS;
 	AT91C_BASE_TC0->TC_CCR = AT91C_TC_CLKDIS;
 	FpgaWriteConfWord(FPGA_MAJOR_MODE_OFF);
+	
 	cmd_send(CMD_ACK, bSuccessful, 0, 0, 0, 0);
 }
 
@@ -1563,7 +1561,7 @@ void WritePageHitagS(hitag_function htf, hitag_data* htd,int page_) {
 	tag.tstate = HT_NO_OP;
 
 // Clean up trace and prepare it for storing frames
-	set_tracing(TRUE);
+	set_tracing(true);
 	clear_trace();
 
 	bQuiet = false;
@@ -1850,7 +1848,7 @@ void check_challenges(bool file_given, byte_t* data) {
 	bSuccessful = false;
 
 // Clean up trace and prepare it for storing frames
-	set_tracing(TRUE);
+	set_tracing(true);
 	clear_trace();
 
 	bQuiet = false;
@@ -1863,9 +1861,9 @@ void check_challenges(bool file_given, byte_t* data) {
 	AT91C_BASE_PIOA->PIO_PER = GPIO_SSC_DOUT;
 
 // Set fpga in edge detect with reader field, we can modulate as reader now
-	FpgaWriteConfWord(
-	FPGA_MAJOR_MODE_LF_EDGE_DETECT | FPGA_LF_EDGE_DETECT_READER_FIELD);
-
+	FpgaWriteConfWord(FPGA_MAJOR_MODE_LF_EDGE_DETECT | FPGA_LF_EDGE_DETECT_READER_FIELD);
+	SpinDelay(50);
+	
 // Set Frequency divisor which will drive the FPGA and analog mux selection
 	FpgaSendCommand(FPGA_CMD_SET_DIVISOR, 95);					//125Khz
 	SetAdcMuxFor(GPIO_MUXSEL_LOPKD);

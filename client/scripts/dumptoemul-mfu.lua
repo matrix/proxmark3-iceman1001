@@ -2,8 +2,11 @@
 -- Have a look there for further details
 getopt = require('getopt')
 bin = require('bin')
+
+copyright = ''
+version = ''
 example = "script run dumptoemul-mfu -i dumpdata-foobar.bin"
-author = "Martin Holst Swende \n @Marshmellow"
+author = "Martin Holst Swende \n @Marshmellow \n @iceman"
 usage = "script run dumptoemul-mfu [-i <file>] [-o <file>]"
 desc =[[
 This script takes a dumpfile from 'hf mfu dump' and converts it to a format that can be used
@@ -15,19 +18,29 @@ Arguments:
 	-o <filename>	Specifies the output file. If omitted, <uid>.eml is used. 	
 
 ]]
+local DEBUG = false
+
 --- 
 -- A debug printout-function
-function dbg(args)
-	if DEBUG then
-		print("###", args)
+local function dbg(args)
+	if not DEBUG then return end
+	
+	if type(args) == 'table' then
+		local i = 1
+		while result[i] do
+			dbg(result[i])
+			i = i+1
+		end
+	else
+		print('###', args)
 	end
 end 
 --- 
 -- This is only meant to be used when errors occur
-function oops(err)
-	print("ERROR: ",err)
+local function oops(err)
+	print('ERROR: ',err)
+	return nil,err
 end
-
 --- 
 -- Usage help
 function help()
@@ -62,11 +75,10 @@ local function convert_to_emulform(hexdata)
 		return oops(("Bad data, length should be a multiple of 8 (was %d)"):format(string.len(hexdata)))
 	end
 	local ascii,i = "";
-	for i = 1, string.len(hexdata),8 do
-		ascii = ascii  ..string.sub(hexdata,i,i+7).."\n"
-	end
-	
-	return string.sub(ascii,1,-1)
+	for i = 1, string.len(hexdata), 8 do
+		ascii = ascii..string.sub(hexdata, i, i+7).."\n"
+	end	
+	return string.sub(ascii, 1, -2)
 end
 
 local function main(args)
@@ -89,7 +101,14 @@ local function main(args)
 	-- The hex-data is now in ascii-format,
 
 	-- But first, check the uid
-	local uid = string.sub(dumpdata,1+48,8)
+	-- lua uses start index and endindex,  not count.	
+	-- UID is  3three skip bcc0 then 4bytes.
+	-- 1 lua is one-index.
+	-- 1 + 96 (48*2)  new dump format has version/signature/counter data here
+	-- 97,98,99,100,101,102   UID first three bytes 
+	-- 103,104 bcc0
+	-- 105---  UID last four bytes
+	local uid = string.sub(dumpdata, 97, 97+5)..string.sub(dumpdata, 97+8, 97+8+7)
 	output = output or (uid .. ".eml")
 
 	-- Format some linebreaks
@@ -104,7 +123,6 @@ local function main(args)
 	io.close(outfile)
 	print(("Wrote an emulator-dump to the file %s"):format(output))
 end
-
 
 --[[
 In the future, we may implement so that scripts are invoked directly 

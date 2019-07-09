@@ -55,7 +55,15 @@ typedef struct {
 
 #define CMD_DOWNLOAD_EML_BIGBUF											  0x0110
 #define CMD_DOWNLOADED_EML_BIGBUF										  0x0111
- 
+
+// RDV40, Flash memory operations
+#define CMD_READ_FLASH_MEM												  0x0120
+#define CMD_WRITE_FLASH_MEM												  0x0121
+#define CMD_WIPE_FLASH_MEM												  0x0122
+#define CMD_DOWNLOAND_FLASH_MEM											  0x0123
+#define CMD_DOWNLOADED_FLASHMEM											  0x0124
+#define CMD_INFO_FLASH_MEM												  0x0125
+
 // For low-frequency tags
 #define CMD_READ_TI_TYPE                                                  0x0202
 #define CMD_WRITE_TI_TYPE                                                 0x0203
@@ -64,7 +72,7 @@ typedef struct {
 #define CMD_MOD_THEN_ACQUIRE_RAW_ADC_SAMPLES_125K                         0x0206
 #define CMD_DOWNLOAD_RAW_ADC_SAMPLES_125K                                 0x0207
 #define CMD_DOWNLOADED_RAW_ADC_SAMPLES_125K                               0x0208
-#define CMD_DOWNLOADED_SIM_SAMPLES_125K                                   0x0209
+#define CMD_UPLOAD_SIM_SAMPLES_125K		                                  0x0209
 #define CMD_SIMULATE_TAG_125K                                             0x020A
 #define CMD_HID_DEMOD_FSK                                                 0x020B
 #define CMD_HID_SIM_TAG                                                   0x020C
@@ -95,7 +103,8 @@ typedef struct {
 #define CMD_PSK_SIM_TAG                                                   0x0220
 #define CMD_AWID_DEMOD_FSK                                                0x0221
 #define CMD_VIKING_CLONE_TAG                                              0x0222
-
+#define CMD_T55XX_WAKEUP	                                              0x0224
+#define CMD_COTAG														  0x0225
 
 /* CMD_SET_ADC_MUX: ext1 is 0 for lopkd, 1 for loraw, 2 for hipkd, 3 for hiraw */
 
@@ -109,7 +118,6 @@ typedef struct {
 #define CMD_ISO_15693_COMMAND                                             0x0313
 #define CMD_ISO_15693_COMMAND_DONE                                        0x0314
 #define CMD_ISO_15693_FIND_AFI                                            0x0315
-#define CMD_ISO_15693_DEBUG                                               0x0316
 #define CMD_LF_SNOOP_RAW_ADC_SAMPLES                                      0x0317
 
 // For Hitag2 transponders
@@ -124,6 +132,7 @@ typedef struct {
 #define CMD_WR_HITAG_S													  0x0375
 #define CMD_EMU_HITAG_S													  0x0376
 
+#define CMD_ANTIFUZZ_ISO_14443a											  0x0380
 #define CMD_SIMULATE_TAG_ISO_14443B                                       0x0381
 #define CMD_SNOOP_ISO_14443B                                              0x0382
 #define CMD_SNOOP_ISO_14443a                                              0x0383
@@ -185,6 +194,7 @@ typedef struct {
 #define CMD_MIFAREU_WRITEBL_COMPAT					                      0x0723
 
 #define CMD_MIFARE_CHKKEYS                                                0x0623
+#define CMD_MIFARE_SETMOD                                                 0x0624
 
 #define CMD_MIFARE_SNIFFER                                                0x0630
 //ultralightC
@@ -208,7 +218,6 @@ typedef struct {
 
 #define CMD_UNKNOWN                                                       0xFFFF
 
-
 //Mifare simulation flags
 #define FLAG_INTERACTIVE		0x01
 #define FLAG_4B_UID_IN_DATA 	0x02
@@ -217,15 +226,13 @@ typedef struct {
 #define FLAG_UID_IN_EMUL		0x10
 #define FLAG_NR_AR_ATTACK 		0x20
 
-
 //Iclass reader flags
-#define FLAG_ICLASS_READER_ONLY_ONCE 0x01
-#define FLAG_ICLASS_READER_CC       0x02
-#define FLAG_ICLASS_READER_CSN		0x04
-#define FLAG_ICLASS_READER_CONF		0x08
-#define FLAG_ICLASS_READER_AA		0x10
-#define FLAG_ICLASS_READER_ONE_TRY      0x20
-
+#define FLAG_ICLASS_READER_ONLY_ONCE	0x01
+#define FLAG_ICLASS_READER_CC			0x02
+#define FLAG_ICLASS_READER_CSN			0x04
+#define FLAG_ICLASS_READER_CONF			0x08
+#define FLAG_ICLASS_READER_AIA			0x10
+#define FLAG_ICLASS_READER_ONE_TRY		0x20
 
 
 // CMD_DEVICE_INFO response packet has flags in arg[0], flag definitions:

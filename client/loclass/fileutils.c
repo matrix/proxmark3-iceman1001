@@ -22,7 +22,7 @@
  *
  * This is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as published
- * by the Free Software Foundation.
+ * by the Free Software Foundation, or, at your option, any later version. 
  *
  * This file is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -33,17 +33,11 @@
  * along with loclass.  If not, see <http://www.gnu.org/licenses/>.
  * 
  * 
- * 
  ****************************************************************************/
-#ifndef ON_DEVICE
-
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <sys/stat.h>
-#include <stdarg.h>
 #include "fileutils.h"
-#include "ui.h"
+
+ #ifndef ON_DEVICE
+
 /**
  * @brief checks if a file exists
  * @param filename
@@ -61,36 +55,84 @@ int fileExists(const char *filename) {
 	return result == 0;
 }
 
-int saveFile(const char *preferredName, const char *suffix, const void* data, size_t datalen)
-{
-	int size = sizeof(char) * (strlen(preferredName)+strlen(suffix)+10);
-	char * fileName = malloc(size);
-
-	memset(fileName,0,size);
+int saveFile(const char *preferredName, const char *suffix, const void* data, size_t datalen) {
+	int size = sizeof(char) * (strlen(preferredName) + strlen(suffix) + 10);
+	char * fileName = calloc(size,sizeof(char));
 	int num = 1;
 	sprintf(fileName,"%s.%s", preferredName, suffix);
-	while(fileExists(fileName))
-	{
+	while (fileExists(fileName)) {
 		sprintf(fileName,"%s-%d.%s", preferredName, num, suffix);
 		num++;
 	}
 	/* We should have a valid filename now, e.g. dumpdata-3.bin */
 
 	/*Opening file for writing in binary mode*/
-	FILE *f = fopen(fileName,"wb");
+	FILE *f = fopen(fileName, "wb");
 	if (!f) {
-		prnlog("Failed to write to file '%s'", fileName);
+		PrintAndLogDevice(WARNING, "file not found or locked. '%s'", fileName);
 		free(fileName);
 		return 1;
 	}
 	fwrite(data, 1,	datalen, f);
-	if (f) {
-		fclose(f);
-		f = NULL;
-	}
-	prnlog("Saved data to '%s'", fileName);
+	fflush(f);
+	fclose(f);
+	PrintAndLogDevice(SUCCESS, "saved %u bytes to binary file %s", datalen, fileName);
 	free(fileName);
 	return 0;
+}
+
+int saveFileEML(const char *preferredName, const char *suffix, uint8_t* data, size_t datalen, size_t blocksize) {
+
+	if ( preferredName == NULL ) return 1;
+	if ( suffix == NULL ) return 1;
+	if ( data == NULL ) return 1;
+
+	int retval = 0;
+	int blocks = datalen/blocksize;
+	uint16_t currblock = 1;
+	int i,j;
+	int size = sizeof(char) * (strlen(preferredName) + strlen(suffix) + 10);
+	char * fileName = calloc(size, sizeof(char));
+	int num = 1;
+	sprintf(fileName,"%s.%s", preferredName, suffix);
+	while (fileExists(fileName)) {
+		sprintf(fileName,"%s-%d.%s", preferredName, num, suffix);
+		num++;
+	}
+	
+	/* We should have a valid filename now, e.g. dumpdata-3.bin */
+
+	/*Opening file for writing in text mode*/
+	FILE *f = fopen(fileName, "w+");
+	if (!f) {
+		PrintAndLogDevice(WARNING, "file not found or locked. '%s'", fileName);
+		retval =  1;
+		goto out;
+	}
+
+	for (i = 0; i < datalen; i++) {
+		fprintf(f, "%02X", data[i] );
+		
+		// no extra line in the end
+		if ( (i+1) % blocksize == 0 && currblock != blocks ) {
+			fprintf(f, "\n");
+			currblock++;
+		}
+	}
+	// left overs
+	if ( datalen % blocksize != 0) {
+		int index = blocks * blocksize;
+		for (j = 0; j < datalen % blocksize; j++) {
+			fprintf(f, "%02X", data[index + j] );
+		}
+	}
+	fflush(f);
+	fclose(f);
+	PrintAndLogDevice(SUCCESS, "saved %d blocks to text file %s", blocks, fileName);
+	
+out:	
+	free(fileName);
+	return retval;
 }
 
 /**
@@ -101,20 +143,18 @@ int saveFile(const char *preferredName, const char *suffix, const void* data, si
  * write also to a logfile. When doing so, just delete this function.
  * @param fmt
  */
-void prnlog(char *fmt, ...)
-{
+ /*
+void PrintAndLogDevice(logLevel_t level, char *fmt, ...) {
 	char buffer[2048] = {0};
 	va_list args;
-	va_start(args,fmt);
-	vsprintf (buffer,fmt, args);
+	va_start(args, fmt);
+	vsnprintf(buffer, sizeof(buffer), fmt, args);
 	va_end(args);
-	PrintAndLog(buffer);
-
+	PrintAndLogEx(level, buffer);
 }
+*/
 #else //if we're on ARM
-void prnlog(char *fmt,...)
-{
-	return;
-}
+
+//void PrintAndLogDevice(logLevel_t level, char *fmt, ...) { return; }
 
 #endif

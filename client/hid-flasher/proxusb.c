@@ -8,20 +8,7 @@
 //-----------------------------------------------------------------------------
 // USB utilities
 //-----------------------------------------------------------------------------
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdbool.h>
-#include <unistd.h>
-#include <usb.h>
-#include <strings.h>
-#include <errno.h>
-
-#include "sleep.h"
 #include "proxusb.h"
-#include "proxmark3.h"
-#include "usb_cmd.h"
 
 // It seems to be missing for mingw
 #ifndef ETIMEDOUT
@@ -32,7 +19,6 @@ usb_dev_handle *devh = NULL;
 static unsigned int claimed_iface = 0;
 unsigned char return_on_error = 0;
 unsigned char error_occured = 0;
-extern unsigned int current_command;
 
 void SendCommand(UsbCommand *c)
 {
@@ -41,7 +27,7 @@ void SendCommand(UsbCommand *c)
 #if 0
   printf("Sending %d bytes\n", sizeof(UsbCommand));
 #endif
-  current_command = c->cmd;
+
   ret = usb_bulk_write(devh, 0x01, (char*)c, sizeof(UsbCommand), 1000);
   if (ret<0) {
     error_occured = 1;
@@ -55,7 +41,7 @@ void SendCommand(UsbCommand *c)
       usb_close(devh);
       devh = NULL;
     }
-    while(!OpenProxmark(0)) { sleep(1); }
+    while(!OpenProxmark(0)) { msleep(1000); }
     printf(PROXPROMPT);
     fflush(NULL);
 
@@ -82,7 +68,7 @@ bool ReceiveCommandPoll(UsbCommand *c)
         usb_close(devh);
         devh = NULL;
       }
-      while(!OpenProxmark(0)) { sleep(1); }
+      while(!OpenProxmark(0)) { msleep(1000); }
       printf(PROXPROMPT);
       fflush(NULL);
 
@@ -111,70 +97,76 @@ void ReceiveCommand(UsbCommand *c)
 
 usb_dev_handle* findProxmark(int verbose, unsigned int *iface)
 {
-  struct usb_bus *busses, *bus;
-  usb_dev_handle *handle = NULL;
-  struct prox_unit units[50];
-  int iUnit = 0;
+	struct usb_bus *busses, *bus;
+	usb_dev_handle *handle = NULL;
+	struct prox_unit units[50];
+	int iUnit = 0;
 
-  usb_find_busses();
-  usb_find_devices();
+	usb_find_busses();
+	usb_find_devices();
 
-  busses = usb_get_busses();
+	busses = usb_get_busses();
 
-  for (bus = busses; bus; bus = bus->next) {
-    struct usb_device *dev;
-    
-    for (dev = bus->devices; dev; dev = dev->next) {
-      struct usb_device_descriptor *desc = &(dev->descriptor);
+	for (bus = busses; bus; bus = bus->next) {
+		struct usb_device *dev;
 
-      if ((desc->idProduct == 0x4b8f) && (desc->idVendor == 0x9ac4)) {
-        handle = usb_open(dev);
-        if (!handle) {
-          if (verbose)
-            fprintf(stderr, "open fabiled: %s!\n", usb_strerror());
-          //return NULL;
-          continue;
-        }
-        *iface = dev->config[0].interface[0].altsetting[0].bInterfaceNumber;
+		for (dev = bus->devices; dev; dev = dev->next) {
+			struct usb_device_descriptor *desc = &(dev->descriptor);
 
-        struct prox_unit unit = {handle, {0}};
-        usb_get_string_simple(handle, desc->iSerialNumber, unit.serial_number, sizeof(unit.serial_number));
-        units[iUnit++] = unit;
+			if ((desc->idProduct == 0x4b8f) && (desc->idVendor == 0x9ac4)) {
+				handle = usb_open(dev);
+				if (!handle) {
+					if (verbose)
+						fprintf(stderr, "open fabiled: %s!\n", usb_strerror());
+					//return NULL;
+					continue;
+				}
+				*iface = dev->config[0].interface[0].altsetting[0].bInterfaceNumber;
 
-        //return handle;
-      }
-    }
-  }
+				struct prox_unit unit = {handle, {0}};
+				usb_get_string_simple(handle, desc->iSerialNumber, unit.serial_number, sizeof(unit.serial_number));
+				units[iUnit++] = unit;
 
-  if (iUnit > 0) {
-    int iSelection = 0;
+				//return handle;
+			}
+		}
+	}
 
-    fprintf(stdout, "\nConnected units:\n");
+	if (iUnit > 0) {
+		int iSelection = 0;
 
-    for (int i = 0; i < iUnit; i++) {
-      struct usb_device * dev = usb_device(units[i].handle);
-      fprintf(stdout, "\t%d. SN: %s [%s/%s]\n", i+1, units[i].serial_number, dev->bus->dirname, dev->filename);
-    }
-    if (iUnit > 1) {
-      while (iSelection < 1 || iSelection > iUnit) {
-        fprintf(stdout, "Which unit do you want to connect to? ");
-        fscanf(stdin, "%d", &iSelection);
-        }
-      }
-    else
-      iSelection = 1;
-    iSelection --;
+		fprintf(stdout, "\nConnected units:\n");
 
-    for (int i = 0; i < iUnit; i++) {
-      if (iSelection == i) continue;
-      usb_close(units[i].handle);
-      units[i].handle = NULL;
-    }
+		for (int i = 0; i < iUnit; i++) {
+			struct usb_device * dev = usb_device(units[i].handle);
+			fprintf(stdout, "\t%d. SN: %s [%s/%s]\n", i+1, units[i].serial_number, dev->bus->dirname, dev->filename);
+		}
+		if (iUnit > 1) {
+			while (iSelection < 1 || iSelection > iUnit) {
+				fprintf(stdout, "Which unit do you want to connect to? ");
+				int res = fscanf(stdin, "%d", &iSelection);
+				if ( res != 1 ) {
+					fprintf(stderr, "Input parse error");
+					fflush(stderr);
+					abort();
+				}
+			}
+		}
+		else {
+			iSelection = 1;
+		}
+	
+		iSelection --;
 
-    return units[iSelection].handle;
-  }
+		for (int i = 0; i < iUnit; i++) {
+			if (iSelection == i) continue;
+			usb_close(units[i].handle);
+			units[i].handle = NULL;
+		}
 
-  return NULL;
+		return units[iSelection].handle;
+	}
+	return NULL;
 }
 
 usb_dev_handle* OpenProxmark(int verbose)

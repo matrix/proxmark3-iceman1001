@@ -18,9 +18,9 @@ void SpinDelayUs(int us) {
 	AT91C_BASE_PWMC->PWMC_ENA = PWM_CHANNEL(0);
 	
 	// 48 MHz / 1024 gives 46.875 kHz
-	AT91C_BASE_PWMC_CH0->PWMC_CMR = PWM_CH_MODE_PRESCALER(10);
-	AT91C_BASE_PWMC_CH0->PWMC_CDTYR = 0;
-	AT91C_BASE_PWMC_CH0->PWMC_CPRDR = 0xffff;
+	AT91C_BASE_PWMC_CH0->PWMC_CMR = PWM_CH_MODE_PRESCALER(10);		// Channel Mode Register
+	AT91C_BASE_PWMC_CH0->PWMC_CDTYR = 0;							// Channel Duty Cycle Register
+	AT91C_BASE_PWMC_CH0->PWMC_CPRDR = 0xffff;						// Channel Period Register
 
 	uint16_t start = AT91C_BASE_PWMC_CH0->PWMC_CCNTR;
 
@@ -85,13 +85,13 @@ void StartCountUS(void) {
 	AT91C_BASE_TC1->TC_CCR = AT91C_TC_CLKEN | AT91C_TC_SWTRG;
 	AT91C_BASE_TCB->TCB_BCR = 1;
 	
-	while (AT91C_BASE_TC1->TC_CV >= 1);
+	while (AT91C_BASE_TC1->TC_CV > 0);
 }
 
 uint32_t RAMFUNC GetCountUS(void){
 	//return (AT91C_BASE_TC1->TC_CV * 0x8000) + ((AT91C_BASE_TC0->TC_CV / 15) * 10);
 	//  By suggestion from PwPiwi, http://www.proxmark.org/forum/viewtopic.php?pid=17548#p17548
-	return (AT91C_BASE_TC1->TC_CV * 0x8000) + ((AT91C_BASE_TC0->TC_CV * 2) / 3); 
+	return ((uint32_t)AT91C_BASE_TC1->TC_CV) * 0x8000 + (((uint32_t)AT91C_BASE_TC0->TC_CV) * 2) / 3;
 }
 
 //  -------------------------------------------------------------------------
@@ -152,14 +152,14 @@ void StartCountSspClk(void) {
 
 	// The high word of the counter (TC2) will not reset until the low word (TC0) overflows. 
 	// Therefore need to wait quite some time before we can use the counter.
-	while (AT91C_BASE_TC2->TC_CV >= 1);
+	while (AT91C_BASE_TC2->TC_CV > 0);
 }
 void ResetSspClk(void) {	
 	//enable clock of timer and software trigger
 	AT91C_BASE_TC0->TC_CCR = AT91C_TC_CLKEN | AT91C_TC_SWTRG;
 	AT91C_BASE_TC1->TC_CCR = AT91C_TC_CLKEN | AT91C_TC_SWTRG;
 	AT91C_BASE_TC2->TC_CCR = AT91C_TC_CLKEN | AT91C_TC_SWTRG;
-	while (AT91C_BASE_TC2->TC_CV >= 1);	
+	while (AT91C_BASE_TC2->TC_CV > 0);	
 }
 uint32_t RAMFUNC GetCountSspClk(void) {
 	uint32_t tmp_count = (AT91C_BASE_TC2->TC_CV << 16) | AT91C_BASE_TC0->TC_CV;
@@ -169,59 +169,70 @@ uint32_t RAMFUNC GetCountSspClk(void) {
 }
 
 //  -------------------------------------------------------------------------
-//  Timer for bitbanging,  or LF stuff when you need a very precis timer
+//  Timer for bitbanging, or LF stuff when you need a very precis timer
 //  1us = 1.5ticks
 //  -------------------------------------------------------------------------
 void StartTicks(void){
-	//initialization of the timer
-	// tc1 is higher 0xFFFF0000
-	// tc0 is lower 0x0000FFFF
+	// initialization of the timer
 	AT91C_BASE_PMC->PMC_PCER |= (1 << AT91C_ID_TC0) | (1 << AT91C_ID_TC1);
-	AT91C_BASE_TCB->TCB_BMR = AT91C_TCB_TC0XC0S_NONE | AT91C_TCB_TC1XC1S_TIOA0 | AT91C_TCB_TC2XC2S_NONE;
-	AT91C_BASE_TC0->TC_CCR = AT91C_TC_CLKDIS;
-	AT91C_BASE_TC0->TC_CMR = AT91C_TC_CLKS_TIMER_DIV3_CLOCK | // MCK(48MHz) / 32 
-								AT91C_TC_WAVE | AT91C_TC_WAVESEL_UP_AUTO | AT91C_TC_ACPA_CLEAR |
-								AT91C_TC_ACPC_SET | AT91C_TC_ASWTRG_SET;
-	AT91C_BASE_TC0->TC_RA = 1;
-	AT91C_BASE_TC0->TC_RC = 0; 
+	AT91C_BASE_TCB->TCB_BMR   = AT91C_TCB_TC0XC0S_NONE | AT91C_TCB_TC1XC1S_TIOA0 | AT91C_TCB_TC2XC2S_NONE;
 
-	AT91C_BASE_TC1->TC_CCR = AT91C_TC_CLKDIS;	// timer disable  
-	AT91C_BASE_TC1->TC_CMR = AT91C_TC_CLKS_XC1; // from TC0
-	
-	AT91C_BASE_TC0->TC_CCR = AT91C_TC_CLKEN | AT91C_TC_SWTRG;
-	AT91C_BASE_TC1->TC_CCR = AT91C_TC_CLKEN | AT91C_TC_SWTRG;
-	AT91C_BASE_TCB->TCB_BCR = 1;
-	
-	// wait until timer becomes zero.
-	while (AT91C_BASE_TC1->TC_CV >= 1);
+	// disable TC0 and TC1 for re-configuration
+	AT91C_BASE_TC0->TC_CCR = AT91C_TC_CLKDIS;
+	AT91C_BASE_TC1->TC_CCR = AT91C_TC_CLKDIS;
+
+	// first configure TC1 (higher, 0xFFFF0000) 16 bit counter
+	AT91C_BASE_TC1->TC_CMR = AT91C_TC_CLKS_XC1; // just connect to TIOA0 from TC0
+	AT91C_BASE_TC1->TC_CCR = AT91C_TC_CLKEN | AT91C_TC_SWTRG; // re-enable timer and wait for TC0
+
+	// second configure TC0 (lower, 0x0000FFFF) 16 bit counter
+	AT91C_BASE_TC0->TC_CMR = AT91C_TC_CLKS_TIMER_DIV3_CLOCK | // MCK(48MHz) / 32 
+	                         AT91C_TC_WAVE | AT91C_TC_WAVESEL_UP_AUTO |
+	                         AT91C_TC_ACPA_CLEAR | // RA comperator clears TIOA (carry bit)
+	                         AT91C_TC_ACPC_SET |   // RC comperator sets TIOA (carry bit)
+	                         AT91C_TC_ASWTRG_SET;  // SWTriger sets TIOA (carry bit)
+	AT91C_BASE_TC0->TC_RC  = 0; // set TIOA (carry bit) on overflow, return to zero
+	AT91C_BASE_TC0->TC_RA  = 1; // clear carry bit on next clock cycle
+	AT91C_BASE_TC0->TC_CCR = AT91C_TC_CLKEN | AT91C_TC_SWTRG; // reset and re-enable timer
+
+	// synchronized startup procedure
+	while (AT91C_BASE_TC0->TC_CV > 0); // wait until TC0 returned to zero
+	while (AT91C_BASE_TC0->TC_CV < 2); // and has started (TC_CV > TC_RA, now TC1 is cleared)
+
+	// return to zero
+	AT91C_BASE_TC1->TC_CCR = AT91C_TC_SWTRG;
+	AT91C_BASE_TC0->TC_CCR = AT91C_TC_SWTRG;
+	while (AT91C_BASE_TC0->TC_CV > 0);
 }
+
+uint32_t GetTicks(void) {
+	uint32_t hi, lo;
+
+	do {
+		hi = AT91C_BASE_TC1->TC_CV;
+		lo = AT91C_BASE_TC0->TC_CV;
+	} while(hi != AT91C_BASE_TC1->TC_CV);
+
+	return (hi << 16) | lo;
+}
+
 // Wait - Spindelay in ticks.
 // if called with a high number, this will trigger the WDT...
 void WaitTicks(uint32_t ticks){
 	if ( ticks == 0 ) return;
-	ticks += GET_TICKS;	
-	while (GET_TICKS < ticks);
+	ticks += GetTicks();
+	while (GetTicks() < ticks);
 }
+
 // Wait / Spindelay in us (microseconds) 
 // 1us = 1.5ticks.
 void WaitUS(uint16_t us){
-	if ( us == 0 ) return;
-	WaitTicks(  (uint32_t)(us * 1.5) );
+	WaitTicks( (uint32_t)us * 3/2 );
 }
 void WaitMS(uint16_t ms){
-	if (ms == 0) return;
-	WaitTicks( (uint32_t)(ms * 1500) );
+	WaitTicks( (uint32_t)ms * 1500 );
 }
-// Starts Clock and waits until its reset
-void ResetTicks(void){
-	AT91C_BASE_TC0->TC_CCR = AT91C_TC_CLKEN | AT91C_TC_SWTRG;
-	AT91C_BASE_TC1->TC_CCR = AT91C_TC_CLKEN | AT91C_TC_SWTRG;
-	while (AT91C_BASE_TC1->TC_CV >= 1);
-}
-void ResetTimer(AT91PS_TC timer){
-	timer->TC_CCR = AT91C_TC_CLKEN | AT91C_TC_SWTRG;
-	while(timer->TC_CV >= 1) ;
-}
+
 // stop clock
 void StopTicks(void){
 	AT91C_BASE_TC0->TC_CCR = AT91C_TC_CLKDIS;

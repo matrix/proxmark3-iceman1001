@@ -1,9 +1,10 @@
 /* cli.c
- * Greg Cook, 27/Jun/2016
+ * Greg Cook, 26/Jul/2018
  */
 
 /* CRC RevEng: arbitrary-precision CRC calculator and algorithm finder
- * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016  Gregory Cook
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018
+ * Gregory Cook
  *
  * This file is part of CRC RevEng.
  *
@@ -21,7 +22,10 @@
  * along with CRC RevEng.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-/* 2016-06-27: -P sets width like -k
+/* 2018-07-26: NOFORCE renamed ALWPCK
+ * 2017-02-18: -G ignored if R_HAVEP
+ * 2017-02-05: added -G
+ * 2016-06-27: -P sets width like -k
  * 2015-04-03: added -z
  * 2013-09-16: do not search with -M
  * 2013-06-11: uprog() suppresses first progress report
@@ -73,14 +77,7 @@ int reveng_main(int argc, char *argv[]) {
 	 */
 
 	/* default values */
-	model_t model = {
-		PZERO,		/* no CRC polynomial, user must specify */
-		PZERO,		/* Init = 0 */
-		P_BE,		/* RefIn = false, RefOut = false, plus P_RTJUST setting in reveng.h */
-		PZERO,		/* XorOut = 0 */
-		PZERO,		/* check value unused */
-		NULL		/* no model name */
-	};
+	model_t model = MZERO;
 	int ibperhx = 8, obperhx = 8;
 	int rflags = 0, uflags = 0; /* search and UI flags */
 
@@ -102,7 +99,7 @@ int reveng_main(int argc, char *argv[]) {
 	pos=0;
 	optind=1;
 	do {
-		c=getopt(argc, argv, "?A:BDFLMP:SVXa:bcdefhi:k:lm:p:q:rstuvw:x:yz");
+		c=getopt(argc, argv, "?A:BDFGLMP:SVXa:bcdefhi:k:lm:p:q:rstuvw:x:yz");
 		switch(c) {
 			case 'A': /* A: bits per output character */
 			case 'a': /* a: bits per character */
@@ -138,13 +135,16 @@ int reveng_main(int argc, char *argv[]) {
 				}
 				mode = c;
 				break;
-			case 'F': /* F  force search */
-#ifndef NOFORCE
-				uflags |= C_FORCE;
+			case 'F': /* F  skip preset model check pass */
+#ifndef ALWPCK
+				uflags |= C_NOPCK;
 #endif
 				break;
 			case 'f': /* f  arguments are filenames */
 				uflags |= C_INFILE;
+				break;
+			case 'G': /* G  skip brute force search pass */
+				uflags |= C_NOBFS;
 				break;
 			case 'h': /* h  get help / usage */
 			case 'u': /* u  get help / usage */
@@ -158,8 +158,8 @@ int reveng_main(int argc, char *argv[]) {
 				pptr = &model.init;
 				rflags |= R_HAVEI;
 				goto ipqx;
-			case 'P': /* P: reversed polynomial */
 			case 'k': /* k: polynomial in Koopman notation */
+			case 'P': /* P: reversed polynomial */
 				pfree(&model.spoly);
 				model.spoly = strtop(optarg, 0, 4);
 				pkchop(&model.spoly);
@@ -322,11 +322,10 @@ ipqx:
 				uerror("no preset models available");
 				return 0;
 			}
-			for(mode = 0; mode < args; ++mode) {
-				mbynum(&model, mode);
-				mcanon(&model);
+			do {
+				mbynum(&model, --args);
 				ufound(&model);
-			}
+			} while(args);
 			break;
 		case 'd': /* d  dump CRC model */
 			/* maybe we don't want to do this:
@@ -398,7 +397,7 @@ ipqx:
 			 */
 
 			/* scan against preset models */
-			if(~uflags & C_FORCE) {
+			if(~uflags & C_NOPCK) {
 				pass = 0;
 				do {
 					psets = mcount();
@@ -428,7 +427,6 @@ ipqx:
 						pfree(&apoly);
 						if(qptr == pptr) {
 							/* the selected model solved all arguments */
-							mcanon(&pset);
 							ufound(&pset);
 							uflags |= C_RESULT;
 						}
@@ -448,6 +446,11 @@ ipqx:
 					pfree(qptr);
 				return 1;
 				//exit(EXIT_SUCCESS);
+			}
+			if(uflags & C_NOBFS && ~rflags & R_HAVEP) {
+				uerror("no models found");
+				return 0;
+				//break;
 			}
 			if(!(model.flags & P_REFIN) != !(model.flags & P_REFOUT)){
 				uerror("cannot search for crossed-endian models");
@@ -481,6 +484,7 @@ ipqx:
 			break;
 		default:  /* no mode specified */
 			fprintf(stderr, "%s: no mode switch specified. Use %s -h for help.\n", myname, myname);
+			return 0;
 			//exit(EXIT_FAILURE);
 	}
 
@@ -504,7 +508,6 @@ void
 uerror(const char *msg) {
 	/* Callback function to report fatal errors */
 	fprintf(stderr, "%s: %s\n", myname, msg);
-	return;
 	//exit(EXIT_FAILURE);
 }
 
@@ -577,10 +580,9 @@ usage(void) {
 			"Usage:\t");
 	fputs(myname, stderr);
 	fprintf(stderr,
-			"\t-cdDesvhu? [-bBfFlLMrStVXyz]\n"
-			"\t\t[-a BITS] [-A OBITS] [-i INIT] [-k KPOLY] [-m MODEL]\n"
-			"\t\t[-p POLY] [-P RPOLY] [-q QPOLY] [-w WIDTH] [-x XOROUT]\n"
-			"\t\t[STRING...]\n"
+			"\t-cdDesvhu? [-bBfFGlLMrStVXyz]\n"
+			"\t\t[-a BITS] [-A OBITS] [-i INIT] [-k KPOLY] [-m MODEL] [-p POLY]\n"
+			"\t\t[-p POLY] [-P RPOLY] [-q QPOLY] [-w WIDTH] [-x XOROUT] [STRING...]\n"
 			"Options:\n"
 			"\t-a BITS\t\tbits per character (1 to %d)\n"
 			"\t-A OBITS\tbits per output character (1 to %d)\n"
@@ -596,18 +598,20 @@ usage(void) {
 			"\t-x XOROUT\tfinal register XOR value\n"
 			"Modifier switches:\n"
 			"\t-b big-endian CRC\t\t-B big-endian CRC output\n"
-			"\t-f read files named in STRINGs\t-F find presets less quickly\n"
-			"\t-l little-endian CRC\t\t-L little-endian CRC output\n"
-			"\t-M non-augmenting algorithm\t-r right-justified output\n"
-			"\t-S print spaces between chars\t-t left-justified output\n"
-			"\t-V reverse algorithm only\t-X print uppercase hex\n"
-			"\t-y low bytes first in files\t-z raw binary STRINGs\n");
+			"\t-f read files named in STRINGs\t-F skip preset model check pass\n"
+			"\t-G skip brute force search pass\t-l little-endian CRC\n"
+			"\t-L little-endian CRC output\t-M non-augmenting algorithm\n"
+			"\t-r right-justified output\t-S print spaces between characters\n"
+			"\t-t left-justified output\t-V reverse algorithm only\n"
+			"\t-X print uppercase hexadecimal\t-y low bytes first in files\n"
+			"\t-z raw binary STRINGs\n");
 	fprintf(stderr,
 			"Mode switches:\n"
 			"\t-c calculate CRCs\t\t-d dump algorithm parameters\n"
 			"\t-D list preset algorithms\t-e echo (and reformat) input\n"
 			"\t-s search for algorithm\t\t-v calculate reversed CRCs\n"
-			"\t-g search for alg given hex+crc\t-h | -u | -? show this help\n"
+			"\t-g search for alg given hex+crc\n"
+			"\t-h | -u | -? show this help\n"
 			"Common Use Examples:\n"
 			"\t   reveng -g 01020304e3\n"
 			"\t      Searches for a known/common crc preset that computes the crc\n"
@@ -621,7 +625,8 @@ usage(void) {
 			"\t      Outputs a list of all known/common crc models with their\n"
 			"\t      preset values\n"
 			"\n"
-			"Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016  Gregory Cook\n"
+			"Copyright (C)\n"
+			"2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018  Gregory Cook\n"
 			"This is free software; see the source for copying conditions.  There is NO\n"
 			"warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n"
 			"Version "

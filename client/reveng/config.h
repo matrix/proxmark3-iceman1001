@@ -1,9 +1,10 @@
 /* config.h
- * Greg Cook, 27/Jun/2016
+ * Greg Cook, 26/Jul/2018
  */
 
 /* CRC RevEng: arbitrary-precision CRC calculator and algorithm finder
- * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016  Gregory Cook
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018
+ * Gregory Cook
  *
  * This file is part of CRC RevEng.
  *
@@ -51,10 +52,10 @@
 /* #define BMPMACRO 1 */
 
 /* Some enterprise users may wish to disable the -F switch to minimise CPU
- * usage.  To do this, define the macro NOFORCE.
+ * usage.  To do this, define the macro ALWPCK.
  */
 
-/* #define NOFORCE  1 */
+/* #define ALWPCK   1 */
 
 /* Define PRESETS to compile CRC RevEng with the preset models from the
  * CRC Catalogue.  This implies BMPMACRO and so makes the code platform-

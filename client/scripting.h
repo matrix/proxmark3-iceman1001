@@ -10,6 +10,7 @@
 #ifndef SCRIPTING_H__
 #define SCRIPTING_H__
 
+#include <stdlib.h>
 #include <lua.h>
 #include <lualib.h>
 #include <lauxlib.h>
@@ -17,15 +18,20 @@
 #include "usb_cmd.h"
 #include "cmdmain.h"
 #include "util.h"
-#include "nonce2key/nonce2key.h"
-#include "../common/iso15693tools.h"
-#include "iso14443crc.h"
-#include "../common/crc.h"
-#include "../common/crc16.h"
-#include "../common/crc64.h"
-#include "../common/sha1.h"
+#include "mifarehost.h"
+#include "crc.h"
+#include "crc16.h"
+#include "crc64.h"
+#include "sha1.h"
 #include "aes.h"
 #include "cmdcrc.h"
+#include "cmdhfmfhard.h"
+#include "cmdhfmfu.h"
+#include "protocols.h"
+
+#define LUA_LIBRARIES_DIRECTORY 	"lualibs/"
+#define LUA_SCRIPTS_DIRECTORY 		"scripts/"
+#define LUA_LIBRARIES_WILDCARD 		"?.lua"
 
 /**
  * @brief set_libraries loads the core components of pm3 into the 'pm3'

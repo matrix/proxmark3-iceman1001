@@ -10,11 +10,7 @@
 // the card (with iso14443a_select_card etc.). If You want to use these
 // functions, You need to do the setup before calling them!
 //-----------------------------------------------------------------------------
-
-#include "iso14443a.h"
-#include "iso14443b.h"
 #include "epa.h"
-#include "cmd.h"
 
 // Protocol and Parameter Selection Request for ISO 14443 type A cards
 // use regular (1x) speed in both directions
@@ -102,7 +98,7 @@ static struct {
 static uint8_t apdu_lengths_replay[5];
 
 // type of card (ISO 14443 A or B)
-static char iso_type;
+static char iso_type = 0;
 
 //-----------------------------------------------------------------------------
 // Wrapper for sending APDUs to type A and B cards
@@ -530,7 +526,7 @@ int EPA_Setup()
 	// power up the field
 	iso14443a_setup(FPGA_HF_ISO14443A_READER_MOD);
 	// select the card
-	return_code = iso14443a_select_card(uid, &card_a_info, NULL, true, 0);
+	return_code = iso14443a_select_card(uid, &card_a_info, NULL, true, 0, false);
 	if (return_code == 1) {
 		// send the PPS request
 		ReaderTransmit((uint8_t *)pps, sizeof(pps), NULL);

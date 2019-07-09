@@ -7,53 +7,286 @@
 //-----------------------------------------------------------------------------
 // mifare commands
 //-----------------------------------------------------------------------------
-
 #include "mifarehost.h"
+#include "cmdmain.h"
 
-// MIFARE
-extern int compar_int(const void * a, const void * b) {
-	// didn't work: (the result is truncated to 32 bits)
-	//return (*(uint64_t*)b - *(uint64_t*)a);
+int mfDarkside(uint8_t blockno, uint8_t key_type, uint64_t *key) {
+	uint32_t uid = 0;
+	uint32_t nt = 0, nr = 0, ar = 0;
+	uint64_t par_list = 0, ks_list = 0;
+	uint64_t *keylist = NULL, *last_keylist = NULL;
+	uint32_t keycount = 0;
+	int16_t isOK = 0;
+	
+	UsbCommand c = {CMD_READER_MIFARE, {true, blockno, key_type}};
 
-	// better:
-	if (*(uint64_t*)b > *(uint64_t*)a) return 1;
-	if (*(uint64_t*)b < *(uint64_t*)a) return -1;	
+	// message
+	PrintAndLogEx(NORMAL, "--------------------------------------------------------------------------------\n");
+	PrintAndLogEx(NORMAL, "executing Darkside attack. Expected execution time: 25sec on average");
+	PrintAndLogEx(NORMAL, "press pm3-button on the proxmark3 device to abort both proxmark3 and client.");
+	PrintAndLogEx(NORMAL, "--------------------------------------------------------------------------------\n");
+
+	while (true) {
+		clearCommandBuffer();
+		SendCommand(&c);
+
+		//flush queue
+		while (ukbhit()) { 
+			int gc = getchar(); (void)gc; 
+			return -5;
+		}
+		
+		// wait cycle
+		while (true) {
+			printf("."); fflush(stdout);
+			if (ukbhit()) {
+				int gc = getchar(); (void)gc;
+				return -5;
+			}
+
+			UsbCommand resp;
+			if (WaitForResponseTimeout(CMD_ACK, &resp, 2000)) {
+				isOK  = resp.arg[0];
+				if (isOK < 0) 
+					return isOK;
+				
+				uid = (uint32_t)bytes_to_num(resp.d.asBytes +  0, 4);
+				nt = (uint32_t)bytes_to_num(resp.d.asBytes +  4, 4);
+				par_list = bytes_to_num(resp.d.asBytes +  8, 8);
+				ks_list = bytes_to_num(resp.d.asBytes +  16, 8);
+				nr = (uint32_t)bytes_to_num(resp.d.asBytes + 24, 4);
+				ar = (uint32_t)bytes_to_num(resp.d.asBytes + 28, 4);
+				break;
+			}
+		}
+		PrintAndLogEx(NORMAL, "\n");
+		
+		if (par_list == 0 && c.arg[0] == true) {
+			PrintAndLogEx(SUCCESS, "Parity is all zero. Most likely this card sends NACK on every authentication.");
+		}
+		c.arg[0] = false;
+
+		keycount = nonce2key(uid, nt, nr, ar, par_list, ks_list, &keylist);
+
+		if (keycount == 0) {
+			PrintAndLogEx(FAILED, "key not found (lfsr_common_prefix list is null). Nt=%08x", nt);
+			PrintAndLogEx(FAILED, "this is expected to happen in 25%% of all cases. Trying again with a different reader nonce...");
+			continue;
+		}
+
+		// only parity zero attack
+		if (par_list == 0 ) {
+			qsort(keylist, keycount, sizeof(*keylist), compare_uint64);
+			keycount = intersection(last_keylist, keylist);
+			if (keycount == 0) {
+				free(last_keylist);
+				last_keylist = keylist;
+				PrintAndLogEx(FAILED, "no candidates found, trying again");
+				continue;
+			}
+		}
+
+		PrintAndLogEx(SUCCESS, "found %u candidate key%s\n", keycount, (keycount > 1) ? "s." : ".");
+
+		*key = -1;
+		uint8_t keyBlock[USB_CMD_DATA_SIZE];
+		int max_keys = USB_CMD_DATA_SIZE / 6;
+		for (int i = 0; i < keycount; i += max_keys) {
+			
+			int size = keycount - i > max_keys ? max_keys : keycount - i;
+			for (int j = 0; j < size; j++) {
+				if (par_list == 0) {
+					num_to_bytes(last_keylist[i*max_keys + j], 6, keyBlock+(j*6));
+				} else {
+					num_to_bytes(keylist[i*max_keys + j], 6, keyBlock+(j*6));
+				}
+			}
+			
+			if (!mfCheckKeys(blockno, key_type - 0x60, false, size, keyBlock, key)) {
+				break;
+			}
+		}
+		
+		if (*key != -1) {
+			break;
+		} else {
+			PrintAndLogEx(FAILED, "all candidate keys failed. Restarting darkside attack");
+			free(last_keylist);
+			last_keylist = keylist;
+			c.arg[0] = true;
+		}
+	}
+	free(last_keylist);
+	free(keylist);
 	return 0;
+}
+int mfCheckKeys(uint8_t blockNo, uint8_t keyType, bool clear_trace, uint8_t keycnt, uint8_t * keyBlock, uint64_t * key){
+	*key = -1;	
+	UsbCommand c = {CMD_MIFARE_CHKKEYS, { (blockNo | (keyType << 8)), clear_trace, keycnt}};
+	memcpy(c.d.asBytes, keyBlock, 6 * keycnt);
+	clearCommandBuffer();
+	SendCommand(&c);
+	UsbCommand resp;
+	if (!WaitForResponseTimeout(CMD_ACK, &resp, 2500)) return 1;
+	if ((resp.arg[0] & 0xff) != 0x01) return 2;
+	*key = bytes_to_num(resp.d.asBytes, 6);
+	return 0;
+}
 
-	//return (*(uint64_t*)b > *(uint64_t*)a) - (*(uint64_t*)b < *(uint64_t*)a);
+// Sends chunks of keys to device. 
+// 0 == ok all keys found
+// 1 == 
+// 2 == Time-out, aborting
+int mfCheckKeys_fast( uint8_t sectorsCnt, uint8_t firstChunk, uint8_t lastChunk, uint8_t strategy,
+						uint32_t size, uint8_t *keyBlock, sector_t *e_sector) {
+
+	uint64_t t2 = msclock();
+	uint32_t timeout = 0;
+
+	// send keychunk		
+	UsbCommand c = {CMD_MIFARE_CHKKEYS_FAST, { (sectorsCnt | (firstChunk << 8) | (lastChunk << 12) ), strategy, size}};	
+	memcpy(c.d.asBytes, keyBlock, 6 * size);
+	clearCommandBuffer();
+	SendCommand(&c);
+	UsbCommand resp;
+
+	while ( !WaitForResponseTimeout(CMD_ACK, &resp, 2000) ) {
+		timeout++;
+		printf("."); fflush(stdout);
+		// max timeout for one chunk of 85keys, 60*3sec = 180seconds
+		// s70 with 40*2 keys to check, 80*85 = 6800 auth.
+		// takes about 97s, still some margin before abort
+		if (timeout > 180) {
+			PrintAndLogEx(WARNING, "\nno response from Proxmark. Aborting...");
+			return 2;
+		}
+	}
+	t2 = msclock() - t2;
+
+	// time to convert the returned data.
+	uint8_t curr_keys = resp.arg[0];
+
+	PrintAndLogEx(NORMAL, "\n[-] Chunk: %.1fs | found %u/%u keys (%u)", (float)(t2/1000.0), curr_keys, (sectorsCnt<<1), size);
+		
+	// all keys?		
+	if ( curr_keys == sectorsCnt*2 || lastChunk ) {
+		
+		// success array. each byte is status of key 
+		uint8_t arr[80];
+		uint64_t foo = bytes_to_num(resp.d.asBytes+480, 8);
+		for (uint8_t i = 0; i < 64;  ++i) {
+			arr[i] = (foo >> i) & 0x1;
+		}
+		foo = bytes_to_num(resp.d.asBytes+488, 2);
+		for (uint8_t i = 0; i < 16;  ++i) {
+			arr[i+64] = (foo >> i) & 0x1;
+		}
+
+		// initialize storage for found keys
+		icesector_t *tmp = NULL;
+		tmp = calloc(sectorsCnt, sizeof(icesector_t));
+		if (tmp == NULL)
+			return 1;
+		memcpy(tmp, resp.d.asBytes, sectorsCnt * sizeof(icesector_t) );
+
+		for ( int i = 0; i < sectorsCnt; i++) {
+			// key A
+			if ( !e_sector[i].foundKey[0] ) {
+				e_sector[i].Key[0] =  bytes_to_num( tmp[i].keyA, 6);
+				e_sector[i].foundKey[0] = arr[ (i*2) ];
+			}
+			// key B
+			if ( !e_sector[i].foundKey[1] ) {
+				e_sector[i].Key[1] =  bytes_to_num( tmp[i].keyB, 6);
+				e_sector[i].foundKey[1] = arr[ (i*2) + 1 ];
+			}
+		}
+		free(tmp);
+		
+		if ( curr_keys == sectorsCnt*2 )
+			return 0;
+		if ( lastChunk )
+			return 1;
+	}
+	return 1;
+}
+
+// PM3 imp of J-Run mf_key_brute (part 2)
+// ref: https://github.com/J-Run/mf_key_brute
+int mfKeyBrute(uint8_t blockNo, uint8_t keyType, uint8_t *key, uint64_t *resultkey){
+
+	#define KEYS_IN_BLOCK 85
+	#define KEYBLOCK_SIZE 510
+	#define CANDIDATE_SIZE 0xFFFF * 6
+	uint8_t found = false;
+	uint64_t key64 = 0;
+	uint8_t candidates[CANDIDATE_SIZE] = {0x00};
+	uint8_t keyBlock[KEYBLOCK_SIZE] = {0x00};
+
+	memset(candidates, 0, sizeof(candidates));
+	memset(keyBlock, 0, sizeof(keyBlock));
+	
+	// Generate all possible keys for the first two unknown bytes.
+	for (uint16_t i = 0; i < 0xFFFF; ++i) {		
+		uint32_t j = i * 6;		
+		candidates[0 + j] = i >> 8;	
+		candidates[1 + j] = i;
+		candidates[2 + j] = key[2];
+		candidates[3 + j] = key[3];
+		candidates[4 + j] = key[4];
+		candidates[5 + j] = key[5];
+	}
+	uint32_t counter, i;
+	for ( i = 0, counter = 1; i < CANDIDATE_SIZE; i += KEYBLOCK_SIZE, ++counter){
+
+		key64 = 0;
+		
+		// copy candidatekeys to test key block
+		memcpy(keyBlock, candidates + i, KEYBLOCK_SIZE);
+
+		// check a block of generated candidate keys.
+		if (!mfCheckKeys(blockNo, keyType, true, KEYS_IN_BLOCK, keyBlock, &key64)) {
+			*resultkey = key64;
+			found = true;
+			break;
+		}
+		
+		// progress 
+		if ( counter % 20 == 0 )
+			PrintAndLogEx(SUCCESS, "tried : %s.. \t %u keys", sprint_hex(candidates + i, 6),  counter * KEYS_IN_BLOCK  );
+	}
+	return found;
 }
 
 // Compare 16 Bits out of cryptostate
 int Compare16Bits(const void * a, const void * b) {
-	 if ((*(uint64_t*)b & 0x00ff000000ff0000) > (*(uint64_t*)a & 0x00ff000000ff0000)) return 1;	
-	 if ((*(uint64_t*)b & 0x00ff000000ff0000) < (*(uint64_t*)a & 0x00ff000000ff0000)) return -1;
-	 return 0;
-
-/*	return 
-		((*(uint64_t*)b & 0x00ff000000ff0000) > (*(uint64_t*)a & 0x00ff000000ff0000))
-		-
-		((*(uint64_t*)b & 0x00ff000000ff0000) < (*(uint64_t*)a & 0x00ff000000ff0000))
-		;
-*/
+	if ((*(uint64_t*)b & 0x00ff000000ff0000) == (*(uint64_t*)a & 0x00ff000000ff0000)) return 0;
+	if ((*(uint64_t*)b & 0x00ff000000ff0000) > (*(uint64_t*)a & 0x00ff000000ff0000)) return 1;
+	return -1;
 }
 
 // wrapper function for multi-threaded lfsr_recovery32
-void* nested_worker_thread(void *arg)
-{
+void
+#ifdef __has_attribute
+#if __has_attribute(force_align_arg_pointer)
+__attribute__((force_align_arg_pointer)) 
+#endif
+#endif
+*nested_worker_thread(void *arg) {
 	struct Crypto1State *p1;
 	StateList_t *statelist = arg;
 	statelist->head.slhead = lfsr_recovery32(statelist->ks1, statelist->nt ^ statelist->uid);	
 	
-	for (p1 = statelist->head.slhead; *(uint64_t *)p1 != 0; p1++);
+	for (p1 = statelist->head.slhead; *(uint64_t *)p1 != 0; p1++) {};
 	
 	statelist->len = p1 - statelist->head.slhead;
 	statelist->tail.sltail = --p1;
 	qsort(statelist->head.slhead, statelist->len, sizeof(uint64_t), Compare16Bits);
+	
 	return statelist->head.slhead;
 }
 
-int mfnested(uint8_t blockNo, uint8_t keyType, uint8_t * key, uint8_t trgBlockNo, uint8_t trgKeyType, uint8_t * resultKey, bool calibrate) 
-{
+int mfnested(uint8_t blockNo, uint8_t keyType, uint8_t * key, uint8_t trgBlockNo, uint8_t trgKeyType, uint8_t * resultKey, bool calibrate) {
 	uint16_t i;
 	uint32_t uid;
 	UsbCommand resp;
@@ -121,67 +354,56 @@ int mfnested(uint8_t blockNo, uint8_t keyType, uint8_t * key, uint8_t trgBlockNo
 		}
 	}
 
-	p3->even = 0; p3->odd = 0;
-	p4->even = 0; p4->odd = 0;
+	*(uint64_t*)p3 = -1;
+	*(uint64_t*)p4 = -1;
 	statelists[0].len = p3 - statelists[0].head.slhead;
 	statelists[1].len = p4 - statelists[1].head.slhead;
 	statelists[0].tail.sltail = --p3;
 	statelists[1].tail.sltail = --p4;
 
 	// the statelists now contain possible keys. The key we are searching for must be in the
-	// intersection of both lists. Create the intersection:
-	qsort(statelists[0].head.keyhead, statelists[0].len, sizeof(uint64_t), compar_int);
-	qsort(statelists[1].head.keyhead, statelists[1].len, sizeof(uint64_t), compar_int);
-	
-	uint64_t *p5, *p6, *p7;
-	p5 = p7 = statelists[0].head.keyhead; 
-	p6 = statelists[1].head.keyhead;
-	
-	while (p5 <= statelists[0].tail.keytail && p6 <= statelists[1].tail.keytail) {
-		if (compar_int(p5, p6) == 0) {
-			*p7++ = *p5++;
-			p6++;
-		}
-		else {
-			while (compar_int(p5, p6) == -1) p5++;
-			while (compar_int(p5, p6) == 1) p6++;
-		}
-	}
-	statelists[0].len = p7 - statelists[0].head.keyhead;
-	statelists[0].tail.keytail = --p7;
+	// intersection of both lists
+	qsort(statelists[0].head.keyhead, statelists[0].len, sizeof(uint64_t), compare_uint64);
+	qsort(statelists[1].head.keyhead, statelists[1].len, sizeof(uint64_t), compare_uint64);
+	// Create the intersection
+	statelists[0].len = intersection(statelists[0].head.keyhead, statelists[1].head.keyhead);
 
-	uint32_t numOfCandidates = statelists[0].len;
-	if ( numOfCandidates == 0 ) goto out;
-	
+	//statelists[0].tail.keytail = --p7;
+	uint32_t keycnt = statelists[0].len;
+	if ( keycnt == 0 ) goto out;
+
 	memset(resultKey, 0, 6);
-	uint64_t key64 = 0;
+	uint64_t key64 = -1;
 
 	// The list may still contain several key candidates. Test each of them with mfCheckKeys
-	// uint32_t max_keys = keycnt > (USB_CMD_DATA_SIZE/6) ? (USB_CMD_DATA_SIZE/6) : keycnt;
+	uint32_t max_keys = keycnt > (USB_CMD_DATA_SIZE/6) ? (USB_CMD_DATA_SIZE/6) : keycnt;
 	uint8_t keyBlock[USB_CMD_DATA_SIZE] = {0x00};
 
-	for (i = 0; i < numOfCandidates; ++i){
-		crypto1_get_lfsr(statelists[0].head.slhead + i, &key64);
-		num_to_bytes(key64, 6, keyBlock + i * 6);
-	}
+	for (int i = 0; i < keycnt; i += max_keys) {
+		
+		int size = keycnt - i > max_keys ? max_keys : keycnt - i;
+	
+		for (int j = 0; j < size; j++) {
+			crypto1_get_lfsr(statelists[0].head.slhead + i, &key64);
+			num_to_bytes(key64, 6, keyBlock + i * 6);
+		}
+		
+		if (!mfCheckKeys(statelists[0].blockNo, statelists[0].keyType, false, size, keyBlock, &key64)) {		
+			free(statelists[0].head.slhead);
+			free(statelists[1].head.slhead);
+			num_to_bytes(key64, 6, resultKey);
 
-	if (!mfCheckKeys(statelists[0].blockNo, statelists[0].keyType, false, numOfCandidates, keyBlock, &key64)) {		
-		free(statelists[0].head.slhead);
-		free(statelists[1].head.slhead);
-		num_to_bytes(key64, 6, resultKey);
-
-		PrintAndLog("UID: %08x target block:%3u key type: %c  -- Found key [%012"llx"]",
-			uid,
-			(uint16_t)resp.arg[2] & 0xff,
-			(resp.arg[2] >> 8) ? 'B' : 'A',
-			key64
-		);
-		return -5;
+			PrintAndLogEx(SUCCESS, "target block:%3u key type: %c  -- found valid key [%012" PRIx64 "]",
+				(uint16_t)resp.arg[2] & 0xff,
+				(resp.arg[2] >> 8) ? 'B' : 'A',
+				key64
+			);
+			return -5;
+		}		
 	}
 	
 out:
-	PrintAndLog("UID: %08x target block:%3u key type: %c",
-			uid,
+	PrintAndLogEx(SUCCESS, "target block:%3u key type: %c",
 			(uint16_t)resp.arg[2] & 0xff,
 			(resp.arg[2] >> 8) ? 'B' : 'A'
 	);	
@@ -191,74 +413,13 @@ out:
 	return -4;
 }
 
-int mfCheckKeys (uint8_t blockNo, uint8_t keyType, bool clear_trace, uint8_t keycnt, uint8_t * keyBlock, uint64_t * key){
-	*key = 0;
-	UsbCommand c = {CMD_MIFARE_CHKKEYS, { (blockNo | (keyType<<8)), clear_trace, keycnt}};
-	memcpy(c.d.asBytes, keyBlock, 6 * keycnt);
-	clearCommandBuffer();
-	SendCommand(&c);
-	UsbCommand resp;
-	if (!WaitForResponseTimeout(CMD_ACK, &resp, 2500)) return 1;
-	if ((resp.arg[0] & 0xff) != 0x01) return 2;
-	*key = bytes_to_num(resp.d.asBytes, 6);
-	return 0;
-}
-// PM3 imp of J-Run mf_key_brute (part 2)
-// ref: https://github.com/J-Run/mf_key_brute
-int mfKeyBrute(uint8_t blockNo, uint8_t keyType, uint8_t *key, uint64_t *resultkey){
-
-	#define KEYS_IN_BLOCK 85
-	#define KEYBLOCK_SIZE 510
-	#define CANDIDATE_SIZE 0xFFFF * 6
-	uint8_t found = FALSE;
-	uint64_t key64 = 0;
-	uint8_t candidates[CANDIDATE_SIZE] = {0x00};
-	uint8_t keyBlock[KEYBLOCK_SIZE] = {0x00};
-
-	memset(candidates, 0, sizeof(candidates));
-	memset(keyBlock, 0, sizeof(keyBlock));
-	
-	// Generate all possible keys for the first two unknown bytes.
-	for (uint16_t i = 0; i < 0xFFFF; ++i) {		
-		uint32_t j = i * 6;		
-		candidates[0 + j] = i >> 8;	
-		candidates[1 + j] = i;
-		candidates[2 + j] = key[2];
-		candidates[3 + j] = key[3];
-		candidates[4 + j] = key[4];
-		candidates[5 + j] = key[5];
-	}
-	uint32_t counter, i;
-	for ( i = 0, counter = 1; i < CANDIDATE_SIZE; i += KEYBLOCK_SIZE, ++counter){
-
-		key64 = 0;
-		
-		// copy candidatekeys to test key block
-		memcpy(keyBlock, candidates + i, KEYBLOCK_SIZE);
-
-		// check a block of generated candidate keys.
-		if (!mfCheckKeys(blockNo, keyType, TRUE, KEYS_IN_BLOCK, keyBlock, &key64)) {
-			*resultkey = key64;
-			found = TRUE;
-			break;
-		}
-		
-		// progress 
-		if ( counter % 20 == 0 )
-			PrintAndLog("tried : %s.. \t %u keys", sprint_hex(candidates + i, 6),  counter * KEYS_IN_BLOCK  );
-	}
-	return found;
-}
-
-
 // EMULATOR
-
 int mfEmlGetMem(uint8_t *data, int blockNum, int blocksCount) {
 	UsbCommand c = {CMD_MIFARE_EML_MEMGET, {blockNum, blocksCount, 0}};
 	clearCommandBuffer();
  	SendCommand(&c);
 	UsbCommand resp;
-	if (!WaitForResponseTimeout(CMD_ACK,&resp,1500)) return 1;
+	if (!WaitForResponseTimeout(CMD_ACK, &resp, 1500)) return 1;
 	memcpy(data, resp.d.asBytes, blocksCount * 16);
 	return 0;
 }
@@ -284,24 +445,24 @@ int mfCSetUID(uint8_t *uid, uint8_t *atqa, uint8_t *sak, uint8_t *oldUID, uint8_
 
 	int old = mfCGetBlock(0, block0, params);
 	if (old == 0)
-		PrintAndLog("old block 0:  %s", sprint_hex(block0, sizeof(block0)));
+		PrintAndLogEx(SUCCESS, "old block 0:  %s", sprint_hex(block0, sizeof(block0)));
 	else 
-		PrintAndLog("Couldn't get old data. Will write over the last bytes of Block 0.");	
+		PrintAndLogEx(FAILED, "couldn't get old data. Will write over the last bytes of Block 0.");	
 
 	// fill in the new values
 	// UID
 	memcpy(block0, uid, 4); 
 	// Mifare UID BCC
-	block0[4] = block0[0]^block0[1]^block0[2]^block0[3];
+	block0[4] = block0[0] ^ block0[1] ^ block0[2] ^ block0[3];
 	// mifare classic SAK(byte 5) and ATQA(byte 6 and 7, reversed)
 	if ( sak != NULL )
-		block0[5]=sak[0];
+		block0[5] = sak[0];
 	
 	if ( atqa != NULL ) {
-		block0[6]=atqa[1];
-		block0[7]=atqa[0];
+		block0[6] = atqa[1];
+		block0[7] = atqa[0];
 	}
-	PrintAndLog("new block 0:  %s", sprint_hex(block0,16));
+	PrintAndLogEx(SUCCESS, "new block 0:  %s", sprint_hex(block0,16));
 	
 	if ( wipecard )		 params |= MAGIC_WIPE;	
 	if ( oldUID == NULL) params |= MAGIC_UID;
@@ -324,7 +485,7 @@ int mfCSetBlock(uint8_t blockNo, uint8_t *data, uint8_t *uid, uint8_t params) {
 		if (!isOK) 
 			return 2;
 	} else {
-		PrintAndLog("Command execute timeout");
+		PrintAndLogEx(WARNING, "command execute timeout");
 		return 1;
 	}
 	return 0;
@@ -336,12 +497,13 @@ int mfCGetBlock(uint8_t blockNo, uint8_t *data, uint8_t params) {
 	clearCommandBuffer();
 	SendCommand(&c);
 	UsbCommand resp;
-	if (WaitForResponseTimeout(CMD_ACK,&resp,1500)) {
+	if (WaitForResponseTimeout(CMD_ACK, &resp, 1500)) {
 		isOK  = resp.arg[0] & 0xff;
+		if (!isOK) 
+			return 2;		
 		memcpy(data, resp.d.asBytes, 16);
-		if (!isOK) return 2;
 	} else {
-		PrintAndLog("Command execute timeout");
+		PrintAndLogEx(WARNING, "command execute timeout");
 		return 1;
 	}
 	return 0;
@@ -367,11 +529,11 @@ uint64_t key = 0;
 uint32_t ks2 = 0;
 uint32_t ks3 = 0;
 
-uint32_t cuid = 0;    // serial number
-uint32_t nt =0;      // tag challenge
-uint32_t nr_enc =0;  // encrypted reader challenge
-uint32_t ar_enc =0;  // encrypted reader response
-uint32_t at_enc =0;  // encrypted tag response
+uint32_t cuid = 0;    // uid part used for crypto1.
+uint32_t nt = 0;      // tag challenge
+uint32_t nr_enc = 0;  // encrypted reader challenge
+uint32_t ar_enc = 0;  // encrypted reader response
+uint32_t at_enc = 0;  // encrypted tag response
 
 int isTraceCardEmpty(void) {
 	return ((traceCard[0] == 0) && (traceCard[1] == 0) && (traceCard[2] == 0) && (traceCard[3] == 0));
@@ -393,6 +555,7 @@ int loadTraceCard(uint8_t *tuid, uint8_t uidlen) {
 	char buf[64] = {0x00};
 	uint8_t buf8[64] = {0x00};
 	int i, blockNum;
+	uint32_t tmp;
 	
 	if (!isTraceCardEmpty()) 
 		saveTraceCard();
@@ -407,29 +570,29 @@ int loadTraceCard(uint8_t *tuid, uint8_t uidlen) {
 	
 	blockNum = 0;
 		
-	while(!feof(f)){
+	while (!feof(f)){
 	
 		memset(buf, 0, sizeof(buf));
 		if (fgets(buf, sizeof(buf), f) == NULL) {
-			PrintAndLog("No trace file found or reading error.");
+			PrintAndLogEx(FAILED, "No trace file found or reading error.");
 			if (f) {
 				fclose(f);
-				f = NULL;
 			}
 			return 2;
 		}
 
 		if (strlen(buf) < 32){
 			if (feof(f)) break;
-			PrintAndLog("File content error. Block data must include 32 HEX symbols");
+			PrintAndLogEx(FAILED, "File content error. Block data must include 32 HEX symbols");
 			if (f) {
 				fclose(f);
-				f = NULL;
 			}
 			return 2;
 		}
-		for (i = 0; i < 32; i += 2)
-			sscanf(&buf[i], "%02X", (unsigned int *)&buf8[i / 2]);
+		for (i = 0; i < 32; i += 2) {
+			sscanf(&buf[i], "%02X", &tmp);
+			buf8[i / 2] = tmp & 0xFF;
+		}
 
 		memcpy(traceCard + blockNum * 16, buf8, 16);
 
@@ -437,7 +600,6 @@ int loadTraceCard(uint8_t *tuid, uint8_t uidlen) {
 	}
 	if (f) {
 		fclose(f);
-		f = NULL;
 	}
 	return 0;
 }
@@ -449,20 +611,22 @@ int saveTraceCard(void) {
 	FILE * f;
 	f = fopen(traceFileName, "w+");
 	if ( !f ) return 1;
-	
-	for (int i = 0; i < 64; i++) {  // blocks
-		for (int j = 0; j < 16; j++)  // bytes
+
+	// given 4096 tracecard size,  these loop will only match a 1024, 1kb card memory
+	// 4086/16 == 256blocks. 
+	for (uint16_t i = 0; i < 256; i++) {  // blocks
+		for (uint8_t j = 0; j < 16; j++)  // bytes
 			fprintf(f, "%02X", *(traceCard + i * 16 + j)); 
-		fprintf(f,"\n");
+			
+		// no extra line in the end
+		if ( i < 255 )
+			fprintf(f, "\n");
 	}
 	fflush(f);
-	if (f) {
-		fclose(f);
-		f = NULL;
-	}
+	fclose(f);
 	return 0;
 }
-
+//
 int mfTraceInit(uint8_t *tuid, uint8_t uidlen, uint8_t *atqa, uint8_t sak, bool wantSaveToEmlFile) {
 
 	if (traceCrypto1) 
@@ -477,7 +641,7 @@ int mfTraceInit(uint8_t *tuid, uint8_t uidlen, uint8_t *atqa, uint8_t sak, bool 
 	traceCard[5] = sak;
 	memcpy(&traceCard[6], atqa, 2);
 	traceCurBlock = 0;
-	cuid = bytes_to_num(tuid+(uidlen-4), 4);
+	cuid = bytes_to_num(tuid + (uidlen-4), 4);
 	traceState = TRACE_IDLE;
 	return 0;
 }
@@ -497,34 +661,34 @@ void mf_crypto1_decrypt(struct Crypto1State *pcs, uint8_t *data, int len, bool i
 		bt |= (crypto1_bit(pcs, 0, isEncrypted) ^ BIT(data[0], 3)) << 3;			
 		data[0] = bt;
 	}
-	return;
 }
 
 int mfTraceDecode(uint8_t *data_src, int len, bool wantSaveToEmlFile) {
 
-	if (traceState == TRACE_ERROR) return 1;
+	if (traceState == TRACE_ERROR)
+		return 1;
 
-	if (len > 64) {
+	if (len > 255) {
 		traceState = TRACE_ERROR;
 		return 1;
 	}
 	
-	uint8_t data[64];
+	uint8_t data[255];
 	memset(data, 0x00, sizeof(data));
 	
 	memcpy(data, data_src, len);
 	
 	if ((traceCrypto1) && ((traceState == TRACE_IDLE) || (traceState > TRACE_AUTH_OK))) {
 		mf_crypto1_decrypt(traceCrypto1, data, len, 0);
-		PrintAndLog("DEC| %s", sprint_hex(data, len));
+		PrintAndLogEx(NORMAL, "DEC| %s", sprint_hex(data, len));
 		AddLogHex(logHexFileName, "DEC| ", data, len); 
 	}
 	
 	switch (traceState) {
 	case TRACE_IDLE: 
 		// check packet crc16!
-		if ((len >= 4) && (!CheckCrc14443(CRC_14443_A, data, len))) {
-			PrintAndLog("DEC| CRC ERROR!!!");
+		if ((len >= 4) && (!check_crc(CRC_14443_A, data, len))) {
+			PrintAndLogEx(NORMAL, "DEC| CRC ERROR!!!");
 			AddLogLine(logHexFileName, "DEC| ", "CRC ERROR!!!"); 
 			traceState = TRACE_ERROR;  // do not decrypt the next commands
 			return 1;
@@ -539,25 +703,26 @@ int mfTraceDecode(uint8_t *data_src, int len, bool wantSaveToEmlFile) {
 		}
 
 		// READ
-		if ((len ==4) && ((data[0] == ISO14443A_CMD_READBLOCK))) {
+		if ((len == 4) && ((data[0] == ISO14443A_CMD_READBLOCK))) {
 			traceState = TRACE_READ_DATA;
 			traceCurBlock = data[1];
 			return 0;
 		}
 
 		// WRITE
-		if ((len ==4) && ((data[0] == ISO14443A_CMD_WRITEBLOCK))) {
+		if ((len == 4) && ((data[0] == ISO14443A_CMD_WRITEBLOCK))) {
 			traceState = TRACE_WRITE_OK;
 			traceCurBlock = data[1];
 			return 0;
 		}
 
 		// HALT
-		if ((len ==4) && ((data[0] == ISO14443A_CMD_HALT) && (data[1] == 0x00))) {
+		if ((len == 4) && ((data[0] == ISO14443A_CMD_HALT) && (data[1] == 0x00))) {
 			traceState = TRACE_ERROR;  // do not decrypt the next commands
 			return 0;
 		}
 		return 0;
+
 	case TRACE_READ_DATA: 
 		if (len == 18) {
 			traceState = TRACE_IDLE;
@@ -620,7 +785,7 @@ int mfTraceDecode(uint8_t *data_src, int len, bool wantSaveToEmlFile) {
 			traceState = TRACE_IDLE;
 			at_enc = bytes_to_num(data, 4);
 			
-			//  decode key here)
+			//  mfkey64 recover key.
 			ks2 = ar_enc ^ prng_successor(nt, 64);
 			ks3 = at_enc ^ prng_successor(nt, 96);
 			revstate = lfsr_recovery64(ks2, ks3);
@@ -629,14 +794,16 @@ int mfTraceDecode(uint8_t *data_src, int len, bool wantSaveToEmlFile) {
 			lfsr_rollback_word(revstate, nr_enc, 1);
 			lfsr_rollback_word(revstate, cuid ^ nt, 0);
 			crypto1_get_lfsr(revstate, &key);
-			PrintAndLog("Found Key: [%012"llx"]", key);
+			PrintAndLogEx(SUCCESS, "found Key: [%012" PRIx64 "]", key);
 			
 			//if ( tryMfk64(cuid, nt, nr_enc, ar_enc, at_enc, &key) )
 			AddLogUint64(logHexFileName, "Found Key: ", key); 
 			
 			int blockShift = ((traceCurBlock & 0xFC) + 3) * 16;
-			if (isBlockEmpty((traceCurBlock & 0xFC) + 3)) memcpy(traceCard + blockShift + 6, trailerAccessBytes, 4);
+			if (isBlockEmpty((traceCurBlock & 0xFC) + 3)) 
+				memcpy(traceCard + blockShift + 6, trailerAccessBytes, 4);
 			
+			// keytype A/B
 			if (traceCurKey)
 				num_to_bytes(key, 6, traceCard + blockShift + 10);
 			else
@@ -649,12 +816,13 @@ int mfTraceDecode(uint8_t *data_src, int len, bool wantSaveToEmlFile) {
 				crypto1_destroy(traceCrypto1);
 			
 			// set cryptosystem state
-			traceCrypto1 = lfsr_recovery64(ks2, ks3);
-			
-			return 0;
+			traceCrypto1 = lfsr_recovery64(ks2, ks3);			
+
 		} else {
+			PrintAndLogEx(NORMAL, "[!] nested key recovery not implemented!\n");
+			at_enc = bytes_to_num(data, 4);
+			crypto1_destroy(traceCrypto1);			
 			traceState = TRACE_ERROR;
-			return 1;
 		}
 		break;
 	default: 
@@ -665,13 +833,156 @@ int mfTraceDecode(uint8_t *data_src, int len, bool wantSaveToEmlFile) {
 }
 
 int tryDecryptWord(uint32_t nt, uint32_t ar_enc, uint32_t at_enc, uint8_t *data, int len){
-	PrintAndLog("\nEncrypted data: [%s]", sprint_hex(data, len) );
+	PrintAndLogEx(SUCCESS, "\nencrypted data: [%s]", sprint_hex(data, len) );
 	struct Crypto1State *s;
 	ks2 = ar_enc ^ prng_successor(nt, 64);
 	ks3 = at_enc ^ prng_successor(nt, 96);
 	s = lfsr_recovery64(ks2, ks3);
-	mf_crypto1_decrypt(s, data, len, FALSE);
-	PrintAndLog("Decrypted data: [%s]", sprint_hex(data, len) );
+	mf_crypto1_decrypt(s, data, len, false);
+	PrintAndLogEx(SUCCESS, "decrypted data: [%s]", sprint_hex(data, len) );
 	crypto1_destroy(s);
 	return 0;
+}
+
+/* Detect Tag Prng, 
+* function performs a partial AUTH,  where it tries to authenticate against block0, key A, but only collects tag nonce.
+* the tag nonce is check to see if it has a predictable PRNG.
+* @returns 
+*	TRUE if tag uses WEAK prng (ie Now the NACK bug also needs to be present for Darkside attack)
+*   FALSE is tag uses HARDEND prng (ie hardnested attack possible, with known key)
+*/
+int detect_classic_prng(void){
+
+	UsbCommand resp, respA;	
+	uint8_t cmd[] = {MIFARE_AUTH_KEYA, 0x00};
+	uint32_t flags = ISO14A_CONNECT | ISO14A_RAW | ISO14A_APPEND_CRC | ISO14A_NO_RATS;
+	
+	UsbCommand c = {CMD_READER_ISO_14443a, {flags, sizeof(cmd), 0}};
+	memcpy(c.d.asBytes, cmd, sizeof(cmd));
+
+	clearCommandBuffer();
+	SendCommand(&c);					
+	
+	if (!WaitForResponseTimeout(CMD_ACK, &resp, 2000)) {
+        PrintAndLogEx(WARNING, "PRNG UID: Reply timeout.");
+		return -1;
+	}
+		
+	// if select tag failed.
+	if ( resp.arg[0] == 0 ) {
+		PrintAndLogEx(WARNING, "error:  selecting tag failed,  can't detect prng\n");
+		return -2;
+	}
+	if (!WaitForResponseTimeout(CMD_ACK, &respA, 2500)) {
+        PrintAndLogEx(WARNING, "PRNG data: Reply timeout.");
+		return -3;
+	}
+
+	// check respA
+	if (respA.arg[0] != 4) {
+		PrintAndLogEx(WARNING, "PRNG data error: Wrong length: %d", respA.arg[0]);
+		return -4;
+	}			
+
+	uint32_t nonce = bytes_to_num(respA.d.asBytes, respA.arg[0]);
+	return validate_prng_nonce(nonce);
+}
+/* Detect Mifare Classic NACK bug 
+
+returns:
+0 = error during test / aborted
+1 = has nack bug
+2 = has not nack bug
+3 = always leak nacks  (clones)
+*/
+int detect_classic_nackbug(bool verbose){
+	
+	UsbCommand c = {CMD_MIFARE_NACK_DETECT, {0, 0, 0}};
+	clearCommandBuffer();
+	SendCommand(&c);
+	UsbCommand resp;
+	
+	if ( verbose )
+		PrintAndLogEx(SUCCESS, "press pm3-button on the proxmark3 device to abort both proxmark3 and client.\n");
+	
+	// for nice animation	
+	bool term = !isatty(STDIN_FILENO);
+#if defined(__linux__) || (__APPLE__)
+	char star[] = {'-', '\\', '|', '/'};
+	uint8_t staridx = 0;	
+#endif 
+
+	while (true) {
+
+		if (term) {		
+			printf(".");
+		} else {
+			printf(
+			#if defined(__linux__) || (__APPLE__)
+			"\e[32m\e[s%c\e[u\e[0m", star[ (staridx++ % 4) ]
+			#else
+			"."
+			#endif
+			);
+		}
+		fflush(stdout);
+		if (ukbhit()) {
+			int gc = getchar(); (void)gc;
+			return -1;
+			break;
+		}
+	
+		if (WaitForResponseTimeout(CMD_ACK, &resp, 500)) {
+			int32_t ok = resp.arg[0];
+			uint32_t nacks = resp.arg[1];
+			uint32_t auths = resp.arg[2];
+			PrintAndLogEx(NORMAL, "");
+			
+			if ( verbose ) {
+				PrintAndLogEx(SUCCESS, "num of auth requests  : %u", auths);
+				PrintAndLogEx(SUCCESS, "num of received NACK  : %u", nacks);
+			}
+			switch( ok ) {
+				case 99 : PrintAndLogEx(WARNING, "button pressed. Aborted."); return 0;
+				case 96 : 
+				case 98 : { 
+							if (verbose)
+								PrintAndLogEx(FAILED, "card random number generator is not predictable.");
+							PrintAndLogEx(WARNING, "detection failed");
+							return 2;
+						}
+				case 97 : {
+							if (verbose) {
+								PrintAndLogEx(FAILED, "card random number generator seems to be based on the well-known generating polynomial");
+								PrintAndLogEx(NORMAL, "[- ]with 16 effective bits only, but shows unexpected behavior, try again."); 
+								return 0;
+							}
+						}				
+				case  2 : PrintAndLogEx(SUCCESS, "always leak NACK detected"); return 3;
+				case  1 : PrintAndLogEx(SUCCESS, "NACK bug detected"); return 1;
+				case  0 : PrintAndLogEx(SUCCESS, "No NACK bug detected"); return 2;
+				default : PrintAndLogEx(WARNING, "errorcode from device [%i]", ok); return 0;
+			}
+			break;
+		}
+	}	
+	return 0;
+}
+/* try to see if card responses to "chinese magic backdoor" commands. */
+void detect_classic_magic(void) {
+	
+	uint8_t isGeneration = 0;
+	UsbCommand resp;
+	UsbCommand c = {CMD_MIFARE_CIDENT, {0, 0, 0}};
+	clearCommandBuffer();
+	SendCommand(&c);
+	if (WaitForResponseTimeout(CMD_ACK, &resp, 1500))
+		isGeneration = resp.arg[0] & 0xff;
+	
+	switch( isGeneration ){
+		case 1: PrintAndLogEx(SUCCESS, "Answers to magic commands (GEN 1a): YES"); break;
+		case 2: PrintAndLogEx(SUCCESS, "Answers to magic commands (GEN 1b): YES"); break;
+		//case 4: PrintAndLogEx(SUCCESS, "Answers to magic commands (GEN 2): YES"); break;
+		default: PrintAndLogEx(INFO, "Answers to magic commands: NO"); break;
+	}		
 }

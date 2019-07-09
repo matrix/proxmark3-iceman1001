@@ -4,7 +4,8 @@
 // at your option, any later version. See the LICENSE.txt file for the text of
 // the license.
 //-----------------------------------------------------------------------------
-// Low frequency Presco tag commands
+// Low frequency Jablotron tag commands
+// Differential Biphase, RF/64, 64 bits long (complete)
 //-----------------------------------------------------------------------------
 
 #include "cmdlfjablotron.h"
@@ -12,27 +13,29 @@
 static int CmdHelp(const char *Cmd);
 
 int usage_lf_jablotron_clone(void){
-	PrintAndLog("clone a Jablotron tag to a T55x7 tag.");
-	PrintAndLog("Usage: lf jablotron clone [h] <card ID> <Q5>");
-	PrintAndLog("Options:");
-	PrintAndLog("      h          : This help");
-	PrintAndLog("      <card ID>  : jablotron card ID");
-	PrintAndLog("      <Q5>       : specify write to Q5 (t5555 instead of t55x7)");
-	PrintAndLog("");
-	PrintAndLog("Sample: lf jablotron clone 112233");
+	PrintAndLogEx(NORMAL, "clone a Jablotron tag to a T55x7 tag.");
+	PrintAndLogEx(NORMAL, "Usage: lf jablotron clone [h] <card ID> <Q5>");
+	PrintAndLogEx(NORMAL, "Options:");
+	PrintAndLogEx(NORMAL, "      h          : This help");
+	PrintAndLogEx(NORMAL, "      <card ID>  : jablotron card ID");
+	PrintAndLogEx(NORMAL, "      <Q5>       : specify write to Q5 (t5555 instead of t55x7)");
+	PrintAndLogEx(NORMAL, "");
+	PrintAndLogEx(NORMAL, "Examples:");
+	PrintAndLogEx(NORMAL, "       lf jablotron clone 112233");
 	return 0;
 }
 
 int usage_lf_jablotron_sim(void) {
-	PrintAndLog("Enables simulation of jablotron card with specified card number.");
-	PrintAndLog("Simulation runs until the button is pressed or another USB command is issued.");
-	PrintAndLog("");
-	PrintAndLog("Usage:  lf jablotron sim [h] <card ID>");
-	PrintAndLog("Options:");
-	PrintAndLog("      h          : This help");
-	PrintAndLog("      <card ID>  : jablotron card ID");
-	PrintAndLog("");
-	PrintAndLog("Sample: lf jablotron sim 112233");
+	PrintAndLogEx(NORMAL, "Enables simulation of jablotron card with specified card number.");
+	PrintAndLogEx(NORMAL, "Simulation runs until the button is pressed or another USB command is issued.");
+	PrintAndLogEx(NORMAL, "");
+	PrintAndLogEx(NORMAL, "Usage:  lf jablotron sim [h] <card ID>");
+	PrintAndLogEx(NORMAL, "Options:");
+	PrintAndLogEx(NORMAL, "      h          : This help");
+	PrintAndLogEx(NORMAL, "      <card ID>  : jablotron card ID");
+	PrintAndLogEx(NORMAL, "");
+	PrintAndLogEx(NORMAL, "Examples:");
+	PrintAndLogEx(NORMAL, "       lf jablotron sim 112233");
 	return 0;
 }
 
@@ -58,6 +61,24 @@ int getJablotronBits(uint64_t fullcode, uint8_t *bits) {
 	return 1;
 }
 
+// ASK/Diphase fc/64 (inverted Biphase)
+// Note: this is not a demod, this is only a detection
+// the parameter *bits needs to be demoded before call
+// 0xFFFF preamble, 64bits
+int detectJablotron(uint8_t *bits, size_t *size) {
+	if (*size < 64*2) return -1; //make sure buffer has enough data
+	size_t startIdx = 0;
+	uint8_t preamble[] = {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0};
+	if (preambleSearch(bits, preamble, sizeof(preamble), size, &startIdx) == 0)
+		return -2; //preamble not found
+	if (*size != 64) return -3; // wrong demoded size
+	
+	uint8_t checkchksum = jablontron_chksum(bits+startIdx);
+	uint8_t crc = bytebits_to_byte(bits+startIdx+56, 8);
+	if ( checkchksum != crc ) return -5;
+	return (int)startIdx;
+}
+
 static uint64_t getJablontronCardId( uint64_t rawcode ){
 	uint64_t id = 0;
 	uint8_t bytes[] = {0,0,0,0,0};
@@ -74,33 +95,30 @@ int CmdJablotronDemod(const char *Cmd) {
 
 	//Differential Biphase / di-phase (inverted biphase)
 	//get binary from ask wave
-	if (!ASKbiphaseDemod("0 64 1 0", FALSE)) {
-		if (g_debugMode) PrintAndLog("Error Jablotron: ASKbiphaseDemod failed");
+	if (!ASKbiphaseDemod("0 64 1 0", false)) {
+		if (g_debugMode) PrintAndLogEx(DEBUG, "DEBUG: Error - Jablotron ASKbiphaseDemod failed");
 		return 0;
 	}
 	size_t size = DemodBufferLen;
-	int ans = JablotronDemod(DemodBuffer, &size);
+	int ans = detectJablotron(DemodBuffer, &size);
 	if (ans < 0){
 		if (g_debugMode){
-			// if (ans == -5)
-				// PrintAndLog("DEBUG: Error - not enough samples");
 			if (ans == -1)
-				PrintAndLog("DEBUG: Error - Jablotron too few bits found");
-			// else if (ans == -2)
-				// PrintAndLog("DEBUG: Error - problem during ASK/Biphase demod");
+				PrintAndLogEx(DEBUG, "DEBUG: Error - Jablotron too few bits found");
+			else if (ans == -2)
+				PrintAndLogEx(DEBUG, "DEBUG: Error - Jablotron preamble not found");
 			else if (ans == -3)
-				PrintAndLog("DEBUG: Error - Jablotron Size not correct: %d", size);
-			else if (ans == -4)
-				PrintAndLog("DEBUG: Error - Jablotron preamble not found");
+				PrintAndLogEx(DEBUG, "DEBUG: Error - Jablotron size not correct: %d", size);
 			else if (ans == -5)
-				PrintAndLog("DEBUG: Error - Jablotron checksum failed");
+				PrintAndLogEx(DEBUG, "DEBUG: Error - Jablotron checksum failed");
 			else
-				PrintAndLog("DEBUG: Error - ans: %d", ans);
+				PrintAndLogEx(DEBUG, "DEBUG: Error - Jablotron ans: %d", ans);
 		}
 		return 0;
 	}
 
-	setDemodBuf(DemodBuffer+ans, 64, 0);
+	setDemodBuf(DemodBuffer, 64, ans);
+	setClockGrid(g_DemodClock, g_DemodStartIdx + (ans*g_DemodClock));
 	
 	//got a good demod
 	uint32_t raw1 = bytebits_to_byte(DemodBuffer, 32);
@@ -109,18 +127,17 @@ int CmdJablotronDemod(const char *Cmd) {
 	uint64_t rawid = bytebits_to_byte(DemodBuffer+16, 40);
 	uint64_t id = getJablontronCardId(rawid);
 
-	PrintAndLog("Jablotron Tag Found: Card ID %u", id);
-	PrintAndLog("Raw: %08X%08X", raw1 ,raw2);
+	PrintAndLogEx(SUCCESS, "Jablotron Tag Found: Card ID: %"PRIx64" :: Raw: %08X%08X", id, raw1, raw2);
 
 	uint8_t chksum = raw2 & 0xFF;
-	PrintAndLog("Checksum: %02X [%s]",
+	PrintAndLogEx(NORMAL, "Checksum: %02X [%s]",
 		chksum,
 		(chksum == jablontron_chksum(DemodBuffer)) ? "OK":"FAIL"		
 	);
 
 	id = DEC2BCD(id);
 	// Printed format: 1410-nn-nnnn-nnnn	
-	PrintAndLog("Printed: 1410-%02X-%04X-%04X",
+	PrintAndLogEx(NORMAL, "Printed: 1410-%02X-%04X-%04X",
 		(uint8_t)(id >> 32) & 0xFF,
 		(uint16_t)(id >> 16) & 0xFFFF,
 		(uint16_t)id & 0xFFFF
@@ -129,19 +146,17 @@ int CmdJablotronDemod(const char *Cmd) {
 }
 
 int CmdJablotronRead(const char *Cmd) {
-	CmdLFRead("s");
-	getSamples("30000",false);
+	lf_read(true, 10000);
 	return CmdJablotronDemod(Cmd);
 }
 
 int CmdJablotronClone(const char *Cmd) {
 
 	uint64_t fullcode = 0;
-	uint32_t blocks[3] = {T55x7_MODULATION_DIPHASE | T55x7_BITRATE_RF_64 | 2<<T55x7_MAXBLOCK_SHIFT, 0, 0};
+	uint32_t blocks[3] = {T55x7_MODULATION_DIPHASE | T55x7_BITRATE_RF_64 | 2 << T55x7_MAXBLOCK_SHIFT, 0, 0};
 
 	uint8_t bits[64];
-	uint8_t *bs = bits;
-	memset(bs, 0, sizeof(bits));
+	memset(bits, 0, sizeof(bits));
 	
 	char cmdp = param_getchar(Cmd, 0);
 	if (strlen(Cmd) == 0 || cmdp == 'h' || cmdp == 'H') return usage_lf_jablotron_clone();
@@ -149,43 +164,36 @@ int CmdJablotronClone(const char *Cmd) {
 	fullcode = param_get64ex(Cmd, 0, 0, 16);
 	
 	//Q5
-	if (param_getchar(Cmd, 1) == 'Q' || param_getchar(Cmd, 1) == 'q') {
-		//t5555 (Q5) BITRATE = (RF-2)/2 (iceman)
-		blocks[0] = T5555_MODULATION_BIPHASE | T5555_INVERT_OUTPUT | 64<<T5555_BITRATE_SHIFT | 2<<T5555_MAXBLOCK_SHIFT;
-	}
+	if (param_getchar(Cmd, 1) == 'Q' || param_getchar(Cmd, 1) == 'q')
+		blocks[0] = T5555_MODULATION_BIPHASE | T5555_INVERT_OUTPUT | T5555_SET_BITRATE(64) | 2 << T5555_MAXBLOCK_SHIFT;
 	
 	// clearing the topbit needed for the preambl detection. 
 	if ((fullcode & 0x7FFFFFFFFF) != fullcode) {
 		fullcode &= 0x7FFFFFFFFF;
-		PrintAndLog("Card Number Truncated to 39bits: %"PRIx64, fullcode);
+		PrintAndLogEx(NORMAL, "Card Number Truncated to 39bits: %"PRIx64, fullcode);
 	}
 	
-	if ( !getJablotronBits(fullcode, bs)) {
-		PrintAndLog("Error with tag bitstream generation.");
+	if ( !getJablotronBits(fullcode, bits)) {
+		PrintAndLogEx(WARNING, "Error with tag bitstream generation.");
 		return 1;
 	}	
 	
-	// 
-	blocks[1] = bytebits_to_byte(bs,32);
-	blocks[2] = bytebits_to_byte(bs+32,32);
+	blocks[1] = bytebits_to_byte(bits, 32);
+	blocks[2] = bytebits_to_byte(bits + 32, 32);
 
-	PrintAndLog("Preparing to clone Jablotron to T55x7 with FullCode: %"PRIx64, fullcode);
-	PrintAndLog("Blk | Data ");
-	PrintAndLog("----+------------");
-	PrintAndLog(" 00 | 0x%08x", blocks[0]);
-	PrintAndLog(" 01 | 0x%08x", blocks[1]);
-	PrintAndLog(" 02 | 0x%08x", blocks[2]);
+	PrintAndLogEx(NORMAL, "Preparing to clone Jablotron to T55x7 with FullCode: %"PRIx64, fullcode);
+	print_blocks(blocks, 3);
 	
 	UsbCommand resp;
 	UsbCommand c = {CMD_T55XX_WRITE_BLOCK, {0,0,0}};
 
-	for (int i = 2; i >= 0; --i) {
+	for (uint8_t i=0; i<4; i++) {
 		c.arg[0] = blocks[i];
 		c.arg[1] = i;
 		clearCommandBuffer();
 		SendCommand(&c);
-		if (!WaitForResponseTimeout(CMD_ACK, &resp, 1000)){
-			PrintAndLog("Error occurred, device did not respond during write operation.");
+		if (!WaitForResponseTimeout(CMD_ACK, &resp, T55XX_WRITE_TIMEOUT)){
+			PrintAndLogEx(WARNING, "Error occurred, device did not respond during write operation.");
 			return -1;
 		}
 	}
@@ -203,7 +211,7 @@ int CmdJablotronSim(const char *Cmd) {
 	// clearing the topbit needed for the preambl detection. 
 	if ((fullcode & 0x7FFFFFFFFF) != fullcode) {
 		fullcode &= 0x7FFFFFFFFF;
-		PrintAndLog("Card Number Truncated to 39bits: %"PRIx64, fullcode);
+		PrintAndLogEx(NORMAL, "Card Number Truncated to 39bits: %"PRIx64, fullcode);
 	}
 	
 	uint8_t clk = 64, encoding = 2, separator = 0, invert = 1;
@@ -212,7 +220,7 @@ int CmdJablotronSim(const char *Cmd) {
 	arg1 = clk << 8 | encoding;
 	arg2 = invert << 8 | separator;
 
-	PrintAndLog("Simulating Jablotron - FullCode: %"PRIx64, fullcode);
+	PrintAndLogEx(NORMAL, "Simulating Jablotron - FullCode: %"PRIx64, fullcode);
 
 	UsbCommand c = {CMD_ASK_SIM_TAG, {arg1, arg2, size}};
 	getJablotronBits(fullcode, c.d.asBytes);
@@ -223,7 +231,8 @@ int CmdJablotronSim(const char *Cmd) {
 
 static command_t CommandTable[] = {
     {"help",	CmdHelp,			1, "This help"},
-	{"read",	CmdJablotronRead,	0, "Attempt to read and extract tag data"},
+	{"demod",	CmdJablotronDemod,	1, "Demodulate an Jablotron tag from the GraphBuffer"},
+	{"read",	CmdJablotronRead,	0, "Attempt to read and extract tag data from the antenna"},
 	{"clone",	CmdJablotronClone,	0, "clone jablotron tag"},
 	{"sim",		CmdJablotronSim,	0, "simulate jablotron tag"},
     {NULL, NULL, 0, NULL}

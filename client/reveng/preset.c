@@ -1,9 +1,10 @@
 /* preset.c
- * Greg Cook, 26/Jul/2016
+ * Greg Cook, 26/Jul/2018
  */
 
 /* CRC RevEng: arbitrary-precision CRC calculator and algorithm finder
- * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016  Gregory Cook
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018
+ * Gregory Cook
  *
  * This file is part of CRC RevEng.
  *
@@ -21,7 +22,14 @@
  * along with CRC RevEng.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-/* 2016-07-26: added array order checking code
+/* 2018-07-26: added CRC-24/OS-9
+ * 2018-07-26: struct malias.name declared const char *const
+ * 2017-06-19: added CRC-8/BLUETOOTH, CRC-17/CAN-FD, CRC-21/CAN-FD
+ * 2017-02-18: added 8 new GSM algorithms
+ * 2017-02-06: munpack() produces canonical models
+ * 2017-02-05: added magic field
+ * 2017-02-01: added CRC-64/GO-ISO, 2 new aliases
+ * 2016-07-26: added array order checking code
  * 2016-07-25: added 5 new algorithms
  * 2016-07-14: added CRC-16/CMS
  * 2016-07-08: added CRC-16/PROFIBUS
@@ -72,11 +80,12 @@ struct mpreset {
 	const int flags;			/* P_REFIN and P_REFOUT indicate reflected input/output */
 	const bmp_t *const bxorout;		/* final register XOR mask. length == poly.length */
 	const bmp_t *const bcheck;		/* optional check value, the CRC of the UTF-8 string "123456789" */
+	const bmp_t *const bmagic;		/* optional magic check value, the residue of a valid codeword */
 	const struct malias *const alias;	/* optional canonical name of the model */
 };
 
 struct malias {
-	const char *name;			/* name of alias */
+	const char *const name;			/* name of alias */
 	const struct mpreset *const model;	/* corresponding model */
 };
 
@@ -91,11 +100,17 @@ struct malias {
 /* CONSTANT b40  = (40, 0x0004820009) */
 /* CONSTANT b40a = (40, 0xffffffffff) */
 /* CONSTANT b40b = (40, 0xd4164fc646) */
-/* CONSTANT b64  = (64, 0x42f0e1eba9ea3693) */
-/* CONSTANT b64a = (64, 0x6c40df5f0b497347) */
-/* CONSTANT b64b = (64, 0xffffffffffffffff) */
-/* CONSTANT b64c = (64, 0x62ec59e3f1a4f00a) */
-/* CONSTANT b64d = (64, 0x995dc9bbdf1939fa) */
+/* CONSTANT b40c = (40, 0xc4ff8071ff) */
+/* CONSTANT b64  = (64, 0x000000000000001b) */
+/* CONSTANT b64a = (64, 0xffffffffffffffff) */
+/* CONSTANT b64b = (64, 0xb90956c775a41001) */
+/* CONSTANT b64c = (64, 0x5300000000000000) */
+/* CONSTANT b64d = (64, 0x42f0e1eba9ea3693) */
+/* CONSTANT b64e = (64, 0x6c40df5f0b497347) */
+/* CONSTANT b64f = (64, 0x62ec59e3f1a4f00a) */
+/* CONSTANT b64g = (64, 0xfcacbebd5931a992) */
+/* CONSTANT b64h = (64, 0x995dc9bbdf1939fa) */
+/* CONSTANT b64i = (64, 0x49958c9abd7d353f) */
 /* CONSTANT b82  = (82, 0x0308c0111011401440411) */
 /* CONSTANT b82a = (82, 0x09ea83f625023801fd612) */
 
@@ -113,6 +128,9 @@ static const bmp_t b40a[] = {
 static const bmp_t b40b[] = {
 	BMP_C(0xd4164fc646) << (BMP_BIT - 40),
 };
+static const bmp_t b40c[] = {
+	BMP_C(0xc4ff8071ff) << (BMP_BIT - 40),
+};
 #    else /* BMP_BIT */
 static const bmp_t b40[] = {
 	BMP_C(0x00048200) << (BMP_BIT - 32) | BMP_C(0x04) >> (39 - BMP_BIT),
@@ -126,44 +144,83 @@ static const bmp_t b40b[] = {
 	BMP_C(0xd4164fc6) << (BMP_BIT - 32) | BMP_C(0x23) >> (39 - BMP_BIT),
 	BMP_C(0x46) << (BMP_BIT * 2 - 40),
 };
+static const bmp_t b40c[] = {
+	BMP_C(0xc4ff8071) << (BMP_BIT - 32) | BMP_C(0x7f) >> (39 - BMP_BIT),
+	BMP_C(0xff) << (BMP_BIT * 2 - 40),
+};
 #    endif /* BMP_BIT */
 
 #    if BMP_BIT >= 64
 static const bmp_t b64[] = {
-	BMP_C(0x42f0e1eba9ea3693) << (BMP_BIT - 64),
+	BMP_C(0x000000000000001b) << (BMP_BIT - 64),
 };
 static const bmp_t b64a[] = {
-	BMP_C(0x6c40df5f0b497347) << (BMP_BIT - 64),
-};
-static const bmp_t b64b[] = {
 	BMP_C(0xffffffffffffffff) << (BMP_BIT - 64),
 };
+static const bmp_t b64b[] = {
+	BMP_C(0xb90956c775a41001) << (BMP_BIT - 64),
+};
 static const bmp_t b64c[] = {
-	BMP_C(0x62ec59e3f1a4f00a) << (BMP_BIT - 64),
+	BMP_C(0x5300000000000000) << (BMP_BIT - 64),
 };
 static const bmp_t b64d[] = {
+	BMP_C(0x42f0e1eba9ea3693) << (BMP_BIT - 64),
+};
+static const bmp_t b64e[] = {
+	BMP_C(0x6c40df5f0b497347) << (BMP_BIT - 64),
+};
+static const bmp_t b64f[] = {
+	BMP_C(0x62ec59e3f1a4f00a) << (BMP_BIT - 64),
+};
+static const bmp_t b64g[] = {
+	BMP_C(0xfcacbebd5931a992) << (BMP_BIT - 64),
+};
+static const bmp_t b64h[] = {
 	BMP_C(0x995dc9bbdf1939fa) << (BMP_BIT - 64),
+};
+static const bmp_t b64i[] = {
+	BMP_C(0x49958c9abd7d353f) << (BMP_BIT - 64),
 };
 #    else /* BMP_BIT */
 static const bmp_t b64[] = {
-	BMP_C(0x42f0e1eb) << (BMP_BIT - 32) | BMP_C(0x54f51b49) >> (63 - BMP_BIT),
-	BMP_C(0xa9ea3693) << (BMP_BIT * 2 - 64),
+	BMP_C(0x00000000) << (BMP_BIT - 32) | BMP_C(0x0000000d) >> (63 - BMP_BIT),
+	BMP_C(0x0000001b) << (BMP_BIT * 2 - 64),
 };
 static const bmp_t b64a[] = {
-	BMP_C(0x6c40df5f) << (BMP_BIT - 32) | BMP_C(0x05a4b9a3) >> (63 - BMP_BIT),
-	BMP_C(0x0b497347) << (BMP_BIT * 2 - 64),
-};
-static const bmp_t b64b[] = {
 	BMP_C(0xffffffff) << (BMP_BIT - 32) | BMP_C(0x7fffffff) >> (63 - BMP_BIT),
 	BMP_C(0xffffffff) << (BMP_BIT * 2 - 64),
 };
+static const bmp_t b64b[] = {
+	BMP_C(0xb90956c7) << (BMP_BIT - 32) | BMP_C(0x3ad20800) >> (63 - BMP_BIT),
+	BMP_C(0x75a41001) << (BMP_BIT * 2 - 64),
+};
 static const bmp_t b64c[] = {
+	BMP_C(0x53000000) << (BMP_BIT - 32) | BMP_C(0x00000000) >> (63 - BMP_BIT),
+	BMP_C(0x00000000) << (BMP_BIT * 2 - 64),
+};
+static const bmp_t b64d[] = {
+	BMP_C(0x42f0e1eb) << (BMP_BIT - 32) | BMP_C(0x54f51b49) >> (63 - BMP_BIT),
+	BMP_C(0xa9ea3693) << (BMP_BIT * 2 - 64),
+};
+static const bmp_t b64e[] = {
+	BMP_C(0x6c40df5f) << (BMP_BIT - 32) | BMP_C(0x05a4b9a3) >> (63 - BMP_BIT),
+	BMP_C(0x0b497347) << (BMP_BIT * 2 - 64),
+};
+static const bmp_t b64f[] = {
 	BMP_C(0x62ec59e3) << (BMP_BIT - 32) | BMP_C(0x78d27805) >> (63 - BMP_BIT),
 	BMP_C(0xf1a4f00a) << (BMP_BIT * 2 - 64),
 };
-static const bmp_t b64d[] = {
+static const bmp_t b64g[] = {
+	BMP_C(0xfcacbebd) << (BMP_BIT - 32) | BMP_C(0x2c98d4c9) >> (63 - BMP_BIT),
+	BMP_C(0x5931a992) << (BMP_BIT * 2 - 64),
+};
+static const bmp_t b64h[] = {
 	BMP_C(0x995dc9bb) << (BMP_BIT - 32) | BMP_C(0x6f8c9cfd) >> (63 - BMP_BIT),
 	BMP_C(0xdf1939fa) << (BMP_BIT * 2 - 64),
+};
+static const bmp_t b64i[] = {
+	BMP_C(0x49958c9a) << (BMP_BIT - 32) | BMP_C(0x5ebe9a9f) >> (63 - BMP_BIT),
+	BMP_C(0xbd7d353f) << (BMP_BIT * 2 - 64),
 };
 #    endif /* BMP_BIT */
 
@@ -201,168 +258,211 @@ static const bmp_t b82a[] = {
 
 /* Array of the polynomial bitmaps used in the model table. */
 static const bmp_t b32[] = {
-	BMP_C(0x00000000) << (BMP_BIT - 32),	/*   0 --  5,      00 */
-	BMP_C(0x000000af) << (BMP_BIT - 32),	/*   1 -- 32,000000af */
-	BMP_C(0x00010000) << (BMP_BIT - 32),	/*   2 -- 16,    0001 */
-	BMP_C(0x00020000) << (BMP_BIT - 32),	/*   3 -- 15,    0001 */
-	BMP_C(0x00065b00) << (BMP_BIT - 32),	/*   4 -- 24,  00065b */
-	BMP_C(0x007e0000) << (BMP_BIT - 32),	/*   5 -- 16,    007e */
-	BMP_C(0x007f0000) << (BMP_BIT - 32),	/*   6 -- 16,    007f */
-	BMP_C(0x03400000) << (BMP_BIT - 32),	/*   7 -- 11,     01a */
-	BMP_C(0x0376e6e7) << (BMP_BIT - 32),	/*   8 -- 32,0376e6e7 */
-	BMP_C(0x04c11db7) << (BMP_BIT - 32),	/*   9 -- 32,04c11db7 */
-	BMP_C(0x05890000) << (BMP_BIT - 32),	/*  10 -- 16,    0589 */
-	BMP_C(0x07000000) << (BMP_BIT - 32),	/*  11 --  8,      07 */
-	BMP_C(0x09823b6e) << (BMP_BIT - 32),	/*  12 -- 31,04c11db7 */
-	BMP_C(0x0b3c0000) << (BMP_BIT - 32),	/*  13 -- 15,    059e */
-	BMP_C(0x0c000000) << (BMP_BIT - 32),	/*  14 --  6,      03 */
-	BMP_C(0x0c200000) << (BMP_BIT - 32),	/*  15 -- 11,     061 */
+	BMP_C(0x000000af) << (BMP_BIT - 32),	/*   0 -- 32,000000af */
+	BMP_C(0x00010000) << (BMP_BIT - 32),	/*   1 -- 16,    0001 */
+	BMP_C(0x00020000) << (BMP_BIT - 32),	/*   2 -- 15,    0001 */
+	BMP_C(0x00065b00) << (BMP_BIT - 32),	/*   3 -- 24,  00065b */
+	BMP_C(0x007e0000) << (BMP_BIT - 32),	/*   4 -- 16,    007e */
+	BMP_C(0x007f0000) << (BMP_BIT - 32),	/*   5 -- 16,    007f */
+	BMP_C(0x03400000) << (BMP_BIT - 32),	/*   6 -- 11,     01a */
+	BMP_C(0x0376e6e7) << (BMP_BIT - 32),	/*   7 -- 32,0376e6e7 */
+	BMP_C(0x04c11db7) << (BMP_BIT - 32),	/*   8 -- 32,04c11db7 */
+	BMP_C(0x05890000) << (BMP_BIT - 32),	/*   9 -- 16,    0589 */
+	BMP_C(0x07000000) << (BMP_BIT - 32),	/*  10 --  8,      07 */
+	BMP_C(0x09823b6e) << (BMP_BIT - 32),	/*  11 -- 31,04c11db7 */
+	BMP_C(0x0b3c0000) << (BMP_BIT - 32),	/*  12 -- 15,    059e */
+	BMP_C(0x0c000000) << (BMP_BIT - 32),	/*  13 --  6,      03 */
+	BMP_C(0x0c200000) << (BMP_BIT - 32),	/*  14 -- 11,     061 */
+	BMP_C(0x0c780000) << (BMP_BIT - 32),	/*  15 -- 14,    031e */
 	BMP_C(0x0fb30000) << (BMP_BIT - 32),	/*  16 -- 16,    0fb3 */
 	BMP_C(0x10210000) << (BMP_BIT - 32),	/*  17 -- 16,    1021 */
 	BMP_C(0x12000000) << (BMP_BIT - 32),	/*  18 --  7,      09 */
 	BMP_C(0x130d2afc) << (BMP_BIT - 32),	/*  19 -- 30,04c34abf */
-	BMP_C(0x15000000) << (BMP_BIT - 32),	/*  20 --  8,      15 */
-	BMP_C(0x1697d06a) << (BMP_BIT - 32),	/*  21 -- 32,1697d06a */
-	BMP_C(0x18000000) << (BMP_BIT - 32),	/*  22 --  6,      06 */
-	BMP_C(0x19d3c8d8) << (BMP_BIT - 32),	/*  23 -- 31,0ce9e46c */
-	BMP_C(0x1c000000) << (BMP_BIT - 32),	/*  24 --  6,      07 */
-	BMP_C(0x1d000000) << (BMP_BIT - 32),	/*  25 --  8,      1d */
-	BMP_C(0x1d0f0000) << (BMP_BIT - 32),	/*  26 -- 16,    1d0f */
-	BMP_C(0x1dcf0000) << (BMP_BIT - 32),	/*  27 -- 16,    1dcf */
-	BMP_C(0x1edc6f41) << (BMP_BIT - 32),	/*  28 -- 32,1edc6f41 */
-	BMP_C(0x1f23b800) << (BMP_BIT - 32),	/*  29 -- 24,  1f23b8 */
-	BMP_C(0x20140000) << (BMP_BIT - 32),	/*  30 -- 14,    0805 */
-	BMP_C(0x20b40000) << (BMP_BIT - 32),	/*  31 -- 14,    082d */
-	BMP_C(0x20fe0000) << (BMP_BIT - 32),	/*  32 -- 16,    20fe */
-	BMP_C(0x21890000) << (BMP_BIT - 32),	/*  33 -- 16,    2189 */
-	BMP_C(0x21cf0200) << (BMP_BIT - 32),	/*  34 -- 24,  21cf02 */
-	BMP_C(0x23ef5200) << (BMP_BIT - 32),	/*  35 -- 24,  23ef52 */
-	BMP_C(0x25000000) << (BMP_BIT - 32),	/*  36 --  8,      25 */
-	BMP_C(0x26b10000) << (BMP_BIT - 32),	/*  37 -- 16,    26b1 */
-	BMP_C(0x27d00000) << (BMP_BIT - 32),	/*  38 -- 13,    04fa */
-	BMP_C(0x28000000) << (BMP_BIT - 32),	/*  39 --  5,      05 */
-	BMP_C(0x29b10000) << (BMP_BIT - 32),	/*  40 -- 16,    29b1 */
-	BMP_C(0x2f000000) << (BMP_BIT - 32),	/*  41 --  8,      2f */
-	BMP_C(0x30000000) << (BMP_BIT - 32),	/*  42 --  4,       3 */
-	BMP_C(0x3010bf7f) << (BMP_BIT - 32),	/*  43 -- 32,3010bf7f */
-	BMP_C(0x31000000) << (BMP_BIT - 32),	/*  44 --  8,      31 */
-	BMP_C(0x31c30000) << (BMP_BIT - 32),	/*  45 -- 16,    31c3 */
-	BMP_C(0x328b6300) << (BMP_BIT - 32),	/*  46 -- 24,  328b63 */
-	BMP_C(0x34000000) << (BMP_BIT - 32),	/*  47 --  6,      0d */
-	BMP_C(0x340bc6d9) << (BMP_BIT - 32),	/*  48 -- 32,340bc6d9 */
-	BMP_C(0x38000000) << (BMP_BIT - 32),	/*  49 --  5,      07 */
-	BMP_C(0x39000000) << (BMP_BIT - 32),	/*  50 --  8,      39 */
-	BMP_C(0x3d650000) << (BMP_BIT - 32),	/*  51 -- 16,    3d65 */
-	BMP_C(0x3e000000) << (BMP_BIT - 32),	/*  52 --  8,      3e */
-	BMP_C(0x44c20000) << (BMP_BIT - 32),	/*  53 -- 16,    44c2 */
-	BMP_C(0x48000000) << (BMP_BIT - 32),	/*  54 --  5,      09 */
-	BMP_C(0x4acc0000) << (BMP_BIT - 32),	/*  55 -- 15,    2566 */
-	BMP_C(0x4b000000) << (BMP_BIT - 32),	/*  56 --  8,      4b */
-	BMP_C(0x4b370000) << (BMP_BIT - 32),	/*  57 -- 16,    4b37 */
-	BMP_C(0x4c060000) << (BMP_BIT - 32),	/*  58 -- 16,    4c06 */
-	BMP_C(0x55000000) << (BMP_BIT - 32),	/*  59 --  8,      55 */
-	BMP_C(0x55555500) << (BMP_BIT - 32),	/*  60 -- 24,  555555 */
-	BMP_C(0x59350000) << (BMP_BIT - 32),	/*  61 -- 16,    5935 */
-	BMP_C(0x5d380000) << (BMP_BIT - 32),	/*  62 -- 16,    5d38 */
-	BMP_C(0x5d6dcb00) << (BMP_BIT - 32),	/*  63 -- 24,  5d6dcb */
-	BMP_C(0x60000000) << (BMP_BIT - 32),	/*  64 --  3,       3 */
-	BMP_C(0x60e00000) << (BMP_BIT - 32),	/*  65 -- 11,     307 */
-	BMP_C(0x63d00000) << (BMP_BIT - 32),	/*  66 -- 16,    63d0 */
-	BMP_C(0x64000000) << (BMP_BIT - 32),	/*  67 --  6,      19 */
-	BMP_C(0x66400000) << (BMP_BIT - 32),	/*  68 -- 10,     199 */
-	BMP_C(0x6f630000) << (BMP_BIT - 32),	/*  69 -- 16,    6f63 */
-	BMP_C(0x6f910000) << (BMP_BIT - 32),	/*  70 -- 16,    6f91 */
-	BMP_C(0x70000000) << (BMP_BIT - 32),	/*  71 --  4,       7 */
-	BMP_C(0x70a00000) << (BMP_BIT - 32),	/*  72 -- 11,     385 */
-	BMP_C(0x755b0000) << (BMP_BIT - 32),	/*  73 -- 16,    755b */
-	BMP_C(0x765e7680) << (BMP_BIT - 32),	/*  74 -- 32,765e7680 */
-	BMP_C(0x7979bd00) << (BMP_BIT - 32),	/*  75 -- 24,  7979bd */
-	BMP_C(0x7e000000) << (BMP_BIT - 32),	/*  76 --  8,      7e */
-	BMP_C(0x80006300) << (BMP_BIT - 32),	/*  77 -- 24,  800063 */
-	BMP_C(0x80050000) << (BMP_BIT - 32),	/*  78 -- 16,    8005 */
-	BMP_C(0x800d0000) << (BMP_BIT - 32),	/*  79 -- 16,    800d */
-	BMP_C(0x80c2e71c) << (BMP_BIT - 32),	/*  80 -- 30,2030b9c7 */
-	BMP_C(0x80f00000) << (BMP_BIT - 32),	/*  81 -- 12,     80f */
-	BMP_C(0x814141ab) << (BMP_BIT - 32),	/*  82 -- 32,814141ab */
-	BMP_C(0x864cfb00) << (BMP_BIT - 32),	/*  83 -- 24,  864cfb */
-	BMP_C(0x87315576) << (BMP_BIT - 32),	/*  84 -- 32,87315576 */
-	BMP_C(0x89ec0000) << (BMP_BIT - 32),	/*  85 -- 16,    89ec */
-	BMP_C(0x8a000000) << (BMP_BIT - 32),	/*  86 --  7,      45 */
-	BMP_C(0x8b320000) << (BMP_BIT - 32),	/*  87 -- 15,    4599 */
-	BMP_C(0x8bb70000) << (BMP_BIT - 32),	/*  88 -- 16,    8bb7 */
-	BMP_C(0x8cc00000) << (BMP_BIT - 32),	/*  89 -- 10,     233 */
-	BMP_C(0x906e0000) << (BMP_BIT - 32),	/*  90 -- 16,    906e */
-	BMP_C(0x97000000) << (BMP_BIT - 32),	/*  91 --  8,      97 */
-	BMP_C(0x98000000) << (BMP_BIT - 32),	/*  92 --  6,      26 */
-	BMP_C(0x9b000000) << (BMP_BIT - 32),	/*  93 --  8,      9b */
-	BMP_C(0x9c000000) << (BMP_BIT - 32),	/*  94 --  6,      27 */
-	BMP_C(0x9e000000) << (BMP_BIT - 32),	/*  95 --  7,      4f */
-	BMP_C(0x9ecf0000) << (BMP_BIT - 32),	/*  96 -- 16,    9ecf */
-	BMP_C(0xa0970000) << (BMP_BIT - 32),	/*  97 -- 16,    a097 */
-	BMP_C(0xa1000000) << (BMP_BIT - 32),	/*  98 --  8,      a1 */
-	BMP_C(0xa6000000) << (BMP_BIT - 32),	/*  99 --  7,      53 */
-	BMP_C(0xa8000000) << (BMP_BIT - 32),	/* 100 --  5,      15 */
-	BMP_C(0xa8190000) << (BMP_BIT - 32),	/* 101 -- 16,    a819 */
-	BMP_C(0xa833982b) << (BMP_BIT - 32),	/* 102 -- 32,a833982b */
-	BMP_C(0xabcdef00) << (BMP_BIT - 32),	/* 103 -- 24,  abcdef */
-	BMP_C(0xaee70000) << (BMP_BIT - 32),	/* 104 -- 16,    aee7 */
-	BMP_C(0xb0000000) << (BMP_BIT - 32),	/* 105 --  4,       b */
-	BMP_C(0xb2aa0000) << (BMP_BIT - 32),	/* 106 -- 16,    b2aa */
-	BMP_C(0xb4600000) << (BMP_BIT - 32),	/* 107 -- 11,     5a3 */
-	BMP_C(0xb4c80000) << (BMP_BIT - 32),	/* 108 -- 16,    b4c8 */
-	BMP_C(0xb4f3e600) << (BMP_BIT - 32),	/* 109 -- 24,  b4f3e6 */
-	BMP_C(0xb704ce00) << (BMP_BIT - 32),	/* 110 -- 24,  b704ce */
-	BMP_C(0xbb3d0000) << (BMP_BIT - 32),	/* 111 -- 16,    bb3d */
-	BMP_C(0xbc000000) << (BMP_BIT - 32),	/* 112 --  8,      bc */
-	BMP_C(0xbd0be338) << (BMP_BIT - 32),	/* 113 -- 32,bd0be338 */
-	BMP_C(0xbdf40000) << (BMP_BIT - 32),	/* 114 -- 16,    bdf4 */
-	BMP_C(0xbf050000) << (BMP_BIT - 32),	/* 115 -- 16,    bf05 */
-	BMP_C(0xc0000000) << (BMP_BIT - 32),	/* 116 --  3,       6 */
-	BMP_C(0xc2000000) << (BMP_BIT - 32),	/* 117 --  7,      61 */
-	BMP_C(0xc25a5600) << (BMP_BIT - 32),	/* 118 -- 24,  c25a56 */
-	BMP_C(0xc2b70000) << (BMP_BIT - 32),	/* 119 -- 16,    c2b7 */
-	BMP_C(0xc6c60000) << (BMP_BIT - 32),	/* 120 -- 16,    c6c6 */
-	BMP_C(0xc8000000) << (BMP_BIT - 32),	/* 121 --  5,      19 */
-	BMP_C(0xc8670000) << (BMP_BIT - 32),	/* 122 -- 16,    c867 */
-	BMP_C(0xcbf43926) << (BMP_BIT - 32),	/* 123 -- 32,cbf43926 */
-	BMP_C(0xcde70300) << (BMP_BIT - 32),	/* 124 -- 24,  cde703 */
-	BMP_C(0xd0000000) << (BMP_BIT - 32),	/* 125 --  8,      d0 */
-	BMP_C(0xd02a0000) << (BMP_BIT - 32),	/* 126 -- 15,    6815 */
-	BMP_C(0xd0db0000) << (BMP_BIT - 32),	/* 127 -- 16,    d0db */
-	BMP_C(0xd4d00000) << (BMP_BIT - 32),	/* 128 -- 12,     d4d */
-	BMP_C(0xd5000000) << (BMP_BIT - 32),	/* 129 --  8,      d5 */
-	BMP_C(0xd64e0000) << (BMP_BIT - 32),	/* 130 -- 16,    d64e */
-	BMP_C(0xda000000) << (BMP_BIT - 32),	/* 131 --  8,      da */
-	BMP_C(0xdaf00000) << (BMP_BIT - 32),	/* 132 -- 12,     daf */
-	BMP_C(0xdf000000) << (BMP_BIT - 32),	/* 133 --  8,      df */
-	BMP_C(0xe0000000) << (BMP_BIT - 32),	/* 134 --  3,       7 */
-	BMP_C(0xe3069283) << (BMP_BIT - 32),	/* 135 -- 32,e3069283 */
-	BMP_C(0xe5cc0000) << (BMP_BIT - 32),	/* 136 -- 16,    e5cc */
-	BMP_C(0xe7a80000) << (BMP_BIT - 32),	/* 137 -- 13,    1cf5 */
-	BMP_C(0xea000000) << (BMP_BIT - 32),	/* 138 --  7,      75 */
-	BMP_C(0xea820000) << (BMP_BIT - 32),	/* 139 -- 16,    ea82 */
-	BMP_C(0xec000000) << (BMP_BIT - 32),	/* 140 --  6,      3b */
-	BMP_C(0xf0000000) << (BMP_BIT - 32),	/* 141 --  4,       f */
-	BMP_C(0xf1300000) << (BMP_BIT - 32),	/* 142 -- 12,     f13 */
-	BMP_C(0xf4000000) << (BMP_BIT - 32),	/* 143 --  8,      f4 */
-	BMP_C(0xf4acfb13) << (BMP_BIT - 32),	/* 144 -- 32,f4acfb13 */
-	BMP_C(0xf5b00000) << (BMP_BIT - 32),	/* 145 -- 12,     f5b */
-	BMP_C(0xf6400000) << (BMP_BIT - 32),	/* 146 -- 10,     3d9 */
-	BMP_C(0xf8000000) << (BMP_BIT - 32),	/* 147 --  5,      1f */
-	BMP_C(0xfc000000) << (BMP_BIT - 32),	/* 148 --  6,      3f */
-	BMP_C(0xfc891918) << (BMP_BIT - 32),	/* 149 -- 32,fc891918 */
-	BMP_C(0xfd000000) << (BMP_BIT - 32),	/* 150 --  8,      fd */
-	BMP_C(0xfe000000) << (BMP_BIT - 32),	/* 151 --  7,      7f */
-	BMP_C(0xfedcba00) << (BMP_BIT - 32),	/* 152 -- 24,  fedcba */
-	BMP_C(0xfee80000) << (BMP_BIT - 32),	/* 153 -- 16,    fee8 */
-	BMP_C(0xff000000) << (BMP_BIT - 32),	/* 154 --  8,      ff */
-	BMP_C(0xffc00000) << (BMP_BIT - 32),	/* 155 -- 10,     3ff */
-	BMP_C(0xfff00000) << (BMP_BIT - 32),	/* 156 -- 12,     fff */
-	BMP_C(0xffff0000) << (BMP_BIT - 32),	/* 157 -- 16,    ffff */
-	BMP_C(0xffffff00) << (BMP_BIT - 32),	/* 158 -- 24,  ffffff */
-	BMP_C(0xfffffffc) << (BMP_BIT - 32),	/* 159 -- 30,3fffffff */
-	BMP_C(0xfffffffe) << (BMP_BIT - 32),	/* 160 -- 31,7fffffff */
-	BMP_C(0xffffffff) << (BMP_BIT - 32),	/* 161 -- 32,ffffffff */
+	BMP_C(0x144e6300) << (BMP_BIT - 32),	/*  20 -- 24,  144e63 */
+	BMP_C(0x15000000) << (BMP_BIT - 32),	/*  21 --  8,      15 */
+	BMP_C(0x1697d06a) << (BMP_BIT - 32),	/*  22 -- 32,1697d06a */
+	BMP_C(0x17800000) << (BMP_BIT - 32),	/*  23 -- 12,     178 */
+	BMP_C(0x18000000) << (BMP_BIT - 32),	/*  24 --  6,      06 */
+	BMP_C(0x19d3c8d8) << (BMP_BIT - 32),	/*  25 -- 31,0ce9e46c */
+	BMP_C(0x1c000000) << (BMP_BIT - 32),	/*  26 --  6,      07 */
+	BMP_C(0x1d000000) << (BMP_BIT - 32),	/*  27 --  8,      1d */
+	BMP_C(0x1d0f0000) << (BMP_BIT - 32),	/*  28 -- 16,    1d0f */
+	BMP_C(0x1dcf0000) << (BMP_BIT - 32),	/*  29 -- 16,    1dcf */
+	BMP_C(0x1edc6f41) << (BMP_BIT - 32),	/*  30 -- 32,1edc6f41 */
+	BMP_C(0x1f23b800) << (BMP_BIT - 32),	/*  31 -- 24,  1f23b8 */
+	BMP_C(0x20000000) << (BMP_BIT - 32),	/*  32 --  4,       2 */
+	BMP_C(0x200fa500) << (BMP_BIT - 32),	/*  33 -- 24,  200fa5 */
+	BMP_C(0x20140000) << (BMP_BIT - 32),	/*  34 -- 14,    0805 */
+	BMP_C(0x20b40000) << (BMP_BIT - 32),	/*  35 -- 14,    082d */
+	BMP_C(0x20fe0000) << (BMP_BIT - 32),	/*  36 -- 16,    20fe */
+	BMP_C(0x21890000) << (BMP_BIT - 32),	/*  37 -- 16,    2189 */
+	BMP_C(0x21cf0200) << (BMP_BIT - 32),	/*  38 -- 24,  21cf02 */
+	BMP_C(0x23ef5200) << (BMP_BIT - 32),	/*  39 -- 24,  23ef52 */
+	BMP_C(0x25000000) << (BMP_BIT - 32),	/*  40 --  8,      25 */
+	BMP_C(0x26000000) << (BMP_BIT - 32),	/*  41 --  8,      26 */
+	BMP_C(0x26b10000) << (BMP_BIT - 32),	/*  42 -- 16,    26b1 */
+	BMP_C(0x27818000) << (BMP_BIT - 32),	/*  43 -- 17,   04f03 */
+	BMP_C(0x27d00000) << (BMP_BIT - 32),	/*  44 -- 13,    04fa */
+	BMP_C(0x28000000) << (BMP_BIT - 32),	/*  45 --  5,      05 */
+	BMP_C(0x29b10000) << (BMP_BIT - 32),	/*  46 -- 16,    29b1 */
+	BMP_C(0x2f000000) << (BMP_BIT - 32),	/*  47 --  8,      2f */
+	BMP_C(0x30000000) << (BMP_BIT - 32),	/*  48 --  4, 3/ 5, 6 */
+	BMP_C(0x3010bf7f) << (BMP_BIT - 32),	/*  49 -- 32,3010bf7f */
+	BMP_C(0x31000000) << (BMP_BIT - 32),	/*  50 --  8,      31 */
+	BMP_C(0x31800000) << (BMP_BIT - 32),	/*  51 -- 10,     0c6 */
+	BMP_C(0x31c30000) << (BMP_BIT - 32),	/*  52 -- 16,    31c3 */
+	BMP_C(0x328b6300) << (BMP_BIT - 32),	/*  53 -- 24,  328b63 */
+	BMP_C(0x34000000) << (BMP_BIT - 32),	/*  54 --  6,      0d */
+	BMP_C(0x340bc6d9) << (BMP_BIT - 32),	/*  55 -- 32,340bc6d9 */
+	BMP_C(0x37000000) << (BMP_BIT - 32),	/*  56 --  8,      37 */
+	BMP_C(0x38000000) << (BMP_BIT - 32),	/*  57 --  5,      07 */
+	BMP_C(0x39000000) << (BMP_BIT - 32),	/*  58 --  8,      39 */
+	BMP_C(0x3d650000) << (BMP_BIT - 32),	/*  59 -- 16,    3d65 */
+	BMP_C(0x3e000000) << (BMP_BIT - 32),	/*  60 --  8,      3e */
+	BMP_C(0x40000000) << (BMP_BIT - 32),	/*  61 --  3,       2 */
+	BMP_C(0x42000000) << (BMP_BIT - 32),	/*  62 --  8,      42 */
+	BMP_C(0x44c20000) << (BMP_BIT - 32),	/*  63 -- 16,    44c2 */
+	BMP_C(0x45270551) << (BMP_BIT - 32),	/*  64 -- 32,45270551 */
+	BMP_C(0x48000000) << (BMP_BIT - 32),	/*  65 --  5,      09 */
+	BMP_C(0x49000000) << (BMP_BIT - 32),	/*  66 --  8,      49 */
+	BMP_C(0x4a800000) << (BMP_BIT - 32),	/*  67 -- 10,     12a */
+	BMP_C(0x4acc0000) << (BMP_BIT - 32),	/*  68 -- 15,    2566 */
+	BMP_C(0x4b000000) << (BMP_BIT - 32),	/*  69 --  8,      4b */
+	BMP_C(0x4b370000) << (BMP_BIT - 32),	/*  70 -- 16,    4b37 */
+	BMP_C(0x4c000000) << (BMP_BIT - 32),	/*  71 --  6,      13 */
+	BMP_C(0x4c060000) << (BMP_BIT - 32),	/*  72 -- 16,    4c06 */
+	BMP_C(0x53000000) << (BMP_BIT - 32),	/*  73 --  8,      53 */
+	BMP_C(0x55000000) << (BMP_BIT - 32),	/*  74 --  8,      55 */
+	BMP_C(0x55555500) << (BMP_BIT - 32),	/*  75 -- 24,  555555 */
+	BMP_C(0x59350000) << (BMP_BIT - 32),	/*  76 -- 16,    5935 */
+	BMP_C(0x5d380000) << (BMP_BIT - 32),	/*  77 -- 16,    5d38 */
+	BMP_C(0x5d400000) << (BMP_BIT - 32),	/*  78 -- 10,     175 */
+	BMP_C(0x5d6dcb00) << (BMP_BIT - 32),	/*  79 -- 24,  5d6dcb */
+	BMP_C(0x60000000) << (BMP_BIT - 32),	/*  80 --  3,       3 */
+	BMP_C(0x60e00000) << (BMP_BIT - 32),	/*  81 -- 11,     307 */
+	BMP_C(0x63d00000) << (BMP_BIT - 32),	/*  82 -- 16,    63d0 */
+	BMP_C(0x64000000) << (BMP_BIT - 32),	/*  83 --  6,      19 */
+	BMP_C(0x66400000) << (BMP_BIT - 32),	/*  84 -- 10,     199 */
+	BMP_C(0x66c50000) << (BMP_BIT - 32),	/*  85 -- 16,    66c5 */
+	BMP_C(0x6f630000) << (BMP_BIT - 32),	/*  86 -- 16,    6f63 */
+	BMP_C(0x6f910000) << (BMP_BIT - 32),	/*  87 -- 16,    6f91 */
+	BMP_C(0x70000000) << (BMP_BIT - 32),	/*  88 --  4,       7 */
+	BMP_C(0x70a00000) << (BMP_BIT - 32),	/*  89 -- 11,     385 */
+	BMP_C(0x755b0000) << (BMP_BIT - 32),	/*  90 -- 16,    755b */
+	BMP_C(0x765e7680) << (BMP_BIT - 32),	/*  91 -- 32,765e7680 */
+	BMP_C(0x76c20800) << (BMP_BIT - 32),	/*  92 -- 32,  0ed841 */
+	BMP_C(0x7979bd00) << (BMP_BIT - 32),	/*  93 -- 24,  7979bd */
+	BMP_C(0x7e000000) << (BMP_BIT - 32),	/*  94 --  8,      7e */
+	BMP_C(0x80000000) << (BMP_BIT - 32),	/*  95 --  3,       4 */
+	BMP_C(0x80006300) << (BMP_BIT - 32),	/*  96 -- 24,  800063 */
+	BMP_C(0x80050000) << (BMP_BIT - 32),	/*  97 -- 16,    8005 */
+	BMP_C(0x800d0000) << (BMP_BIT - 32),	/*  98 -- 16,    800d */
+	BMP_C(0x800fe300) << (BMP_BIT - 32),	/*  99 -- 24,  800fe3 */
+	BMP_C(0x80b40000) << (BMP_BIT - 32),	/* 100 -- 14,    202d */
+	BMP_C(0x80c2e71c) << (BMP_BIT - 32),	/* 101 -- 30,2030b9c7 */
+	BMP_C(0x80f00000) << (BMP_BIT - 32),	/* 102 -- 12,     80f */
+	BMP_C(0x814141ab) << (BMP_BIT - 32),	/* 103 -- 32,814141ab */
+	BMP_C(0x8144c800) << (BMP_BIT - 32),	/* 104 -- 21,  102899 */
+	BMP_C(0x864cfb00) << (BMP_BIT - 32),	/* 105 -- 24,  864cfb */
+	BMP_C(0x87315576) << (BMP_BIT - 32),	/* 106 -- 32,87315576 */
+	BMP_C(0x89ec0000) << (BMP_BIT - 32),	/* 107 -- 16,    89ec */
+	BMP_C(0x8a000000) << (BMP_BIT - 32),	/* 108 --  7,      45 */
+	BMP_C(0x8b320000) << (BMP_BIT - 32),	/* 109 -- 15,    4599 */
+	BMP_C(0x8bb70000) << (BMP_BIT - 32),	/* 110 -- 16,    8bb7 */
+	BMP_C(0x8cc00000) << (BMP_BIT - 32),	/* 111 -- 10,     233 */
+	BMP_C(0x904cddbf) << (BMP_BIT - 32),	/* 112 -- 32,904cddbf */
+	BMP_C(0x906e0000) << (BMP_BIT - 32),	/* 113 -- 16,    906e */
+	BMP_C(0x94000000) << (BMP_BIT - 32),	/* 114 --  8,      94 */
+	BMP_C(0x97000000) << (BMP_BIT - 32),	/* 115 --  8,      97 */
+	BMP_C(0x98000000) << (BMP_BIT - 32),	/* 116 --  6,      26 */
+	BMP_C(0x9b000000) << (BMP_BIT - 32),	/* 117 --  8,      9b */
+	BMP_C(0x9c000000) << (BMP_BIT - 32),	/* 118 --  6,      27 */
+	BMP_C(0x9d5e4de2) << (BMP_BIT - 32),	/* 119 -- 31,4eaf26f1 */
+	BMP_C(0x9e000000) << (BMP_BIT - 32),	/* 120 --  7,      4f */
+	BMP_C(0x9ecf0000) << (BMP_BIT - 32),	/* 121 -- 16,    9ecf */
+	BMP_C(0xa0970000) << (BMP_BIT - 32),	/* 122 -- 16,    a097 */
+	BMP_C(0xa1000000) << (BMP_BIT - 32),	/* 123 --  8,      a1 */
+	BMP_C(0xa3660000) << (BMP_BIT - 32),	/* 124 -- 16,    a366 */
+	BMP_C(0xa6000000) << (BMP_BIT - 32),	/* 125 --  7,      53 */
+	BMP_C(0xa7000000) << (BMP_BIT - 32),	/* 126 --  8,      a7 */
+	BMP_C(0xa8000000) << (BMP_BIT - 32),	/* 127 --  5,      15 */
+	BMP_C(0xa8190000) << (BMP_BIT - 32),	/* 128 -- 16,    a819 */
+	BMP_C(0xa833982b) << (BMP_BIT - 32),	/* 129 -- 32,a833982b */
+	BMP_C(0xabcdef00) << (BMP_BIT - 32),	/* 130 -- 24,  abcdef */
+	BMP_C(0xac000000) << (BMP_BIT - 32),	/* 131 --  8,      ac */
+	BMP_C(0xaee70000) << (BMP_BIT - 32),	/* 132 -- 16,    aee7 */
+	BMP_C(0xb0000000) << (BMP_BIT - 32),	/* 133 --  4,       b */
+	BMP_C(0xb0010000) << (BMP_BIT - 32),	/* 134 -- 16,    b001 */
+	BMP_C(0xb2aa0000) << (BMP_BIT - 32),	/* 135 -- 16,    b2aa */
+	BMP_C(0xb3400000) << (BMP_BIT - 32),	/* 136 -- 12,     b34 */
+	BMP_C(0xb42d8000) << (BMP_BIT - 32),	/* 137 -- 17,   1685b */
+	BMP_C(0xb4600000) << (BMP_BIT - 32),	/* 138 -- 11,     5a3 */
+	BMP_C(0xb4c80000) << (BMP_BIT - 32),	/* 139 -- 16,    b4c8 */
+	BMP_C(0xb4f3e600) << (BMP_BIT - 32),	/* 140 -- 24,  b4f3e6 */
+	BMP_C(0xb704ce00) << (BMP_BIT - 32),	/* 141 -- 24,  b704ce */
+	BMP_C(0xb798b438) << (BMP_BIT - 32),	/* 142 -- 32,b798b438 */
+	BMP_C(0xbb3d0000) << (BMP_BIT - 32),	/* 143 -- 16,    bb3d */
+	BMP_C(0xbc000000) << (BMP_BIT - 32),	/* 144 --  6,2f/ 8,bc */
+	BMP_C(0xbd0be338) << (BMP_BIT - 32),	/* 145 -- 32,bd0be338 */
+	BMP_C(0xbdf40000) << (BMP_BIT - 32),	/* 146 -- 16,    bdf4 */
+	BMP_C(0xbf050000) << (BMP_BIT - 32),	/* 147 -- 16,    bf05 */
+	BMP_C(0xc0000000) << (BMP_BIT - 32),	/* 148 --  3,       6 */
+	BMP_C(0xc2000000) << (BMP_BIT - 32),	/* 149 --  7,      61 */
+	BMP_C(0xc25a5600) << (BMP_BIT - 32),	/* 150 -- 24,  c25a56 */
+	BMP_C(0xc2b70000) << (BMP_BIT - 32),	/* 151 -- 16,    c2b7 */
+	BMP_C(0xc2b80000) << (BMP_BIT - 32),	/* 152 -- 14,    30ae */
+	BMP_C(0xc4000000) << (BMP_BIT - 32),	/* 153 --  8,      c4 */
+	BMP_C(0xc6c60000) << (BMP_BIT - 32),	/* 154 -- 16,    c6c6 */
+	BMP_C(0xc704dd7b) << (BMP_BIT - 32),	/* 155 -- 32,c704dd7b */
+	BMP_C(0xc8000000) << (BMP_BIT - 32),	/* 156 --  5,      19 */
+	BMP_C(0xc8670000) << (BMP_BIT - 32),	/* 157 -- 16,    c867 */
+	BMP_C(0xcbf43926) << (BMP_BIT - 32),	/* 158 -- 32,cbf43926 */
+	BMP_C(0xcde70300) << (BMP_BIT - 32),	/* 159 -- 24,  cde703 */
+	BMP_C(0xce3c0000) << (BMP_BIT - 32),	/* 160 -- 16,    ce3c */
+	BMP_C(0xd0000000) << (BMP_BIT - 32),	/* 161 --  8,      d0 */
+	BMP_C(0xd02a0000) << (BMP_BIT - 32),	/* 162 -- 15,    6815 */
+	BMP_C(0xd0db0000) << (BMP_BIT - 32),	/* 163 -- 16,    d0db */
+	BMP_C(0xd3100000) << (BMP_BIT - 32),	/* 164 -- 12,     d31 */
+	BMP_C(0xd3be9568) << (BMP_BIT - 32),	/* 165 -- 30,34efa55a */
+	BMP_C(0xd4d00000) << (BMP_BIT - 32),	/* 166 -- 12,     d4d */
+	BMP_C(0xd5000000) << (BMP_BIT - 32),	/* 167 --  8,      d5 */
+	BMP_C(0xd64e0000) << (BMP_BIT - 32),	/* 168 -- 16,    d64e */
+	BMP_C(0xda000000) << (BMP_BIT - 32),	/* 169 --  8,      da */
+	BMP_C(0xdaf00000) << (BMP_BIT - 32),	/* 170 -- 12,     daf */
+	BMP_C(0xdebb20e3) << (BMP_BIT - 32),	/* 171 -- 32,debb20e3 */
+	BMP_C(0xdf000000) << (BMP_BIT - 32),	/* 172 --  8,      df */
+	BMP_C(0xe0000000) << (BMP_BIT - 32),	/* 173 --  3,       7 */
+	BMP_C(0xe3069283) << (BMP_BIT - 32),	/* 174 -- 32,e3069283 */
+	BMP_C(0xe3940000) << (BMP_BIT - 32),	/* 175 -- 16,    e394 */
+	BMP_C(0xe5cc0000) << (BMP_BIT - 32),	/* 176 -- 16,    e5cc */
+	BMP_C(0xe7a80000) << (BMP_BIT - 32),	/* 177 -- 13,    1cf5 */
+	BMP_C(0xe8000000) << (BMP_BIT - 32),	/* 178 --  6,      3a */
+	BMP_C(0xea000000) << (BMP_BIT - 32),	/* 179 --  7,      75 */
+	BMP_C(0xea820000) << (BMP_BIT - 32),	/* 180 -- 16,    ea82 */
+	BMP_C(0xec000000) << (BMP_BIT - 32),	/* 181 --  6,      3b */
+	BMP_C(0xf0000000) << (BMP_BIT - 32),	/* 182 --  4,       f */
+	BMP_C(0xf0b80000) << (BMP_BIT - 32),	/* 183 -- 16,    f0b8 */
+	BMP_C(0xf1300000) << (BMP_BIT - 32),	/* 184 -- 12,     f13 */
+	BMP_C(0xf4000000) << (BMP_BIT - 32),	/* 185 --  8,      f4 */
+	BMP_C(0xf4acfb13) << (BMP_BIT - 32),	/* 186 -- 32,f4acfb13 */
+	BMP_C(0xf5b00000) << (BMP_BIT - 32),	/* 187 -- 12,     f5b */
+	BMP_C(0xf6400000) << (BMP_BIT - 32),	/* 188 -- 10,     3d9 */
+	BMP_C(0xf8000000) << (BMP_BIT - 32),	/* 189 --  5,      1f */
+	BMP_C(0xfc000000) << (BMP_BIT - 32),	/* 190 --  6,      3f */
+	BMP_C(0xfc891918) << (BMP_BIT - 32),	/* 191 -- 32,fc891918 */
+	BMP_C(0xfd000000) << (BMP_BIT - 32),	/* 192 --  8,      fd */
+	BMP_C(0xfe000000) << (BMP_BIT - 32),	/* 193 --  7,      7f */
+	BMP_C(0xfedcba00) << (BMP_BIT - 32),	/* 194 -- 24,  fedcba */
+	BMP_C(0xfee80000) << (BMP_BIT - 32),	/* 195 -- 16,    fee8 */
+	BMP_C(0xff000000) << (BMP_BIT - 32),	/* 196 --  8,      ff */
+	BMP_C(0xffc00000) << (BMP_BIT - 32),	/* 197 -- 10,     3ff */
+	BMP_C(0xfff00000) << (BMP_BIT - 32),	/* 198 -- 12,     fff */
+	BMP_C(0xfffc0000) << (BMP_BIT - 32),	/* 199 -- 14,    3fff */
+	BMP_C(0xffff0000) << (BMP_BIT - 32),	/* 200 -- 16,    ffff */
+	BMP_C(0xffffff00) << (BMP_BIT - 32),	/* 201 -- 24,  ffffff */
+	BMP_C(0xfffffffc) << (BMP_BIT - 32),	/* 202 -- 30,3fffffff */
+	BMP_C(0xfffffffe) << (BMP_BIT - 32),	/* 203 -- 31,7fffffff */
+	BMP_C(0xffffffff) << (BMP_BIT - 32),	/* 204 -- 32,ffffffff */
 };
 
 static const struct malias aliases[];
@@ -371,242 +471,270 @@ static const struct malias aliases[];
  * Sorted by left-justified polynomial for bsearch().
  */
 static const struct mpreset models[] = {
-	{32UL, b32+  1, 0,       P_BE,   0,       b32+113, aliases+123},	/*  0 */
-	{40UL, b40,     0,       P_BE,   b40a,    b40b,    aliases+ 80},	/*  1 */
-	{24UL, b32+  4, b32+ 60, P_LE,   0,       b32+118, aliases+ 54},	/*  2 */
-	{32UL, b32+  9, 0,       P_BE,   b32+161, b32+ 74, aliases+ 74},	/*  3 */
-	{32UL, b32+  9, b32+161, P_BE,   0,       b32+  8, aliases+ 73},	/*  4 */
-	{32UL, b32+  9, b32+161, P_BE,   b32+161, b32+149, aliases+ 68},	/*  5 */
-	{32UL, b32+  9, b32+161, P_LE,   0,       b32+ 48, aliases+115},	/*  6 */
-	{32UL, b32+  9, b32+161, P_LE,   b32+161, b32+123, aliases+ 64},	/*  7 */
-	{16UL, b32+ 10, 0,       P_BE,   0,       b32+  6, aliases+ 28},	/*  8 */
-	{16UL, b32+ 10, 0,       P_BE,   b32+  2, b32+  5, aliases+ 27},	/*  9 */
-	{ 8UL, b32+ 11, 0,       P_BE,   0,       b32+143, aliases+ 94},	/* 10 */
-	{ 8UL, b32+ 11, 0,       P_BE,   b32+ 59, b32+ 98, aliases+102},	/* 11 */
-	{ 8UL, b32+ 11, b32+154, P_LE,   0,       b32+125, aliases+106},	/* 12 */
-	{31UL, b32+ 12, b32+160, P_BE,   b32+160, b32+ 23, aliases+ 63},	/* 13 */
-	{ 6UL, b32+ 14, 0,       P_LE,   0,       b32+ 22, aliases+ 87},	/* 14 */
-	{82UL, b82,     0,       P_LE,   0,       b82a,    aliases+109},	/* 15 */
-	{16UL, b32+ 17, 0,       P_BE,   0,       b32+ 45, aliases+124},	/* 16 */
-	{16UL, b32+ 17, 0,       P_LE,   0,       b32+ 33, aliases+116},	/* 17 */
-	{16UL, b32+ 17, b32+ 26, P_BE,   0,       b32+136, aliases+ 18},	/* 18 */
-	{16UL, b32+ 17, b32+ 85, P_LE,   0,       b32+ 37, aliases+ 49},	/* 19 */
-	{16UL, b32+ 17, b32+106, P_LE,   0,       b32+ 66, aliases+ 45},	/* 20 */
-	{16UL, b32+ 17, b32+120, P_LE,   0,       b32+115, aliases+110},	/* 21 */
-	{16UL, b32+ 17, b32+157, P_BE,   0,       b32+ 40, aliases+ 21},	/* 22 */
-	{16UL, b32+ 17, b32+157, P_BE,   b32+157, b32+130, aliases+ 32},	/* 23 */
-	{16UL, b32+ 17, b32+157, P_LE,   0,       b32+ 70, aliases+ 41},	/* 24 */
-	{16UL, b32+ 17, b32+157, P_LE,   b32+157, b32+ 90, aliases+120},	/* 25 */
-	{ 7UL, b32+ 18, 0,       P_BE,   0,       b32+138, aliases+ 91},	/* 26 */
-	{ 6UL, b32+ 24, b32+148, P_BE,   0,       b32+140, aliases+ 85},	/* 27 */
-	{ 8UL, b32+ 25, b32+150, P_BE,   0,       b32+ 76, aliases+101},	/* 28 */
-	{ 8UL, b32+ 25, b32+154, P_BE,   b32+154, b32+ 56, aliases+107},	/* 29 */
-	{ 8UL, b32+ 25, b32+154, P_LE,   0,       b32+ 91, aliases+100},	/* 30 */
-	{16UL, b32+ 27, b32+157, P_BE,   b32+157, b32+101, aliases+ 44},	/* 31 */
-	{32UL, b32+ 28, b32+161, P_LE,   b32+161, b32+135, aliases+ 75},	/* 32 */
-	{14UL, b32+ 30, 0,       P_LE,   0,       b32+ 31, aliases+ 12},	/* 33 */
-	{ 5UL, b32+ 39, b32+147, P_LE,   b32+147, b32+121, aliases+ 83},	/* 34 */
-	{ 8UL, b32+ 41, 0,       P_BE,   0,       b32+ 52, aliases+105},	/* 35 */
-	{ 8UL, b32+ 41, b32+154, P_BE,   b32+154, b32+133, aliases+ 96},	/* 36 */ 
-	{ 4UL, b32+ 42, 0,       P_LE,   0,       b32+ 71, aliases+ 79},	/* 37 */
-	{ 4UL, b32+ 42, b32+141, P_BE,   b32+141, b32+105, aliases+ 78},	/* 38 */
-	{ 8UL, b32+ 44, 0,       P_LE,   0,       b32+ 98, aliases+104},	/* 39 */
-	{24UL, b32+ 46, b32+158, P_BE,   b32+158, b32+109, aliases+ 57},	/* 40 */
-	{ 8UL, b32+ 50, 0,       P_LE,   0,       b32+ 20, aliases+ 98},	/* 41 */
-	{16UL, b32+ 51, 0,       P_BE,   b32+157, b32+119, aliases+ 30},	/* 42 */
-	{16UL, b32+ 51, 0,       P_LE,   b32+157, b32+139, aliases+ 29},	/* 43 */
-	{64UL, b64,     0,       P_BE,   0,       b64a,    aliases+ 88},	/* 44 */
-	{64UL, b64,     b64b,    P_BE,   b64b,    b64c,    aliases+ 89},	/* 45 */
-	{64UL, b64,     b64b,    P_LE,   b64b,    b64d,    aliases+ 90},	/* 46 */
-	{ 5UL, b32+ 54, b32+ 54, P_BE,   0,       b32+  0, aliases+ 81},	/* 47 */
-	{16UL, b32+ 61, 0,       P_BE,   0,       b32+ 62, aliases+ 42},	/* 48 */
-	{24UL, b32+ 63, b32+103, P_BE,   0,       b32+ 29, aliases+ 56},	/* 49 */
-	{24UL, b32+ 63, b32+152, P_BE,   0,       b32+ 75, aliases+ 55},	/* 50 */
-	{ 3UL, b32+ 64, b32+134, P_LE,   0,       b32+116, aliases+ 61},	/* 51 */
-	{11UL, b32+ 65, 0,       P_BE,   0,       b32+ 15, aliases+  6},	/* 52 */
-	{ 6UL, b32+ 67, 0,       P_LE,   0,       b32+ 92, aliases+ 86},	/* 53 */
-	{16UL, b32+ 69, 0,       P_BE,   0,       b32+114, aliases+ 38},	/* 54 */
-	{11UL, b32+ 72, b32+  7, P_BE,   0,       b32+107, aliases+  5},	/* 55 */
-	{16UL, b32+ 73, 0,       P_BE,   0,       b32+ 32, aliases+ 43},	/* 56 */
-	{24UL, b32+ 77, 0,       P_BE,   0,       b32+ 35, aliases+ 59},	/* 57 */
-	{16UL, b32+ 78, 0,       P_BE,   0,       b32+153, aliases+ 19},	/* 58 */
-	{16UL, b32+ 78, 0,       P_LE,   0,       b32+111, aliases+  0},	/* 59 */
-	{16UL, b32+ 78, 0,       P_LE,   b32+157, b32+ 53, aliases+ 40},	/* 60 */
-	{16UL, b32+ 78, b32+ 79, P_BE,   0,       b32+ 96, aliases+ 26},	/* 61 */
-	{16UL, b32+ 78, b32+157, P_BE,   0,       b32+104, aliases+ 24},	/* 62 */
-	{16UL, b32+ 78, b32+157, P_LE,   0,       b32+ 57, aliases+117},	/* 63 */
-	{16UL, b32+ 78, b32+157, P_LE,   b32+157, b32+108, aliases+ 51},	/* 64 */
-	{30UL, b32+ 80, b32+159, P_BE,   b32+159, b32+ 19, aliases+ 62},	/* 65 */
-	{12UL, b32+ 81, 0,       P_BE,   0,       b32+145, aliases+  9},	/* 66 */
-	{12UL, b32+ 81, 0,       P_BELE, 0,       b32+132, aliases+ 10},	/* 67 */
-	{32UL, b32+ 82, 0,       P_BE,   0,       b32+ 43, aliases+ 77},	/* 68 */
-	{24UL, b32+ 83, 0,       P_BE,   0,       b32+124, aliases+ 58},	/* 69 */
-	{24UL, b32+ 83, b32+110, P_BE,   0,       b32+ 34, aliases+ 53},	/* 70 */
-	{ 7UL, b32+ 86, 0,       P_BE,   0,       b32+117, aliases+ 93},	/* 71 */
-	{15UL, b32+ 87, 0,       P_BE,   0,       b32+ 13, aliases+ 13},	/* 72 */
-	{16UL, b32+ 88, 0,       P_BE,   0,       b32+127, aliases+ 47},	/* 73 */
-	{10UL, b32+ 89, 0,       P_BE,   0,       b32+ 68, aliases+  3},	/* 74 */
-	{ 8UL, b32+ 93, 0,       P_BE,   0,       b32+138, aliases+103},	/* 75 */
-	{ 8UL, b32+ 93, 0,       P_LE,   0,       b32+ 36, aliases+108},	/* 76 */
-	{ 8UL, b32+ 93, b32+154, P_BE,   0,       b32+131, aliases+ 97},	/* 77 */
-	{ 6UL, b32+ 94, b32+148, P_BE,   0,       b32+ 47, aliases+ 84},	/* 78 */
-	{ 7UL, b32+ 95, b32+151, P_LE,   0,       b32+ 99, aliases+ 92},	/* 79 */
-	{16UL, b32+ 97, 0,       P_BE,   0,       b32+ 16, aliases+ 48},	/* 80 */
-	{ 5UL, b32+100, 0,       P_LE,   0,       b32+ 49, aliases+ 82},	/* 81 */
-	{32UL, b32+102, b32+161, P_LE,   b32+161, b32+ 84, aliases+ 76},	/* 82 */
-	{16UL, b32+122, b32+157, P_BE,   0,       b32+ 58, aliases+ 23},	/* 83 */
-	{15UL, b32+126, 0,       P_BE,   b32+  3, b32+ 55, aliases+ 14},	/* 84 */
-	{ 8UL, b32+129, 0,       P_BE,   0,       b32+112, aliases+ 99},	/* 85 */
-	{13UL, b32+137, 0,       P_BE,   0,       b32+ 38, aliases+ 11},	/* 86 */
-	{12UL, b32+142, b32+156, P_BE,   0,       b32+128, aliases+  8},	/* 87 */
-	{32UL, b32+144, b32+161, P_LE,   b32+161, b32+ 21, aliases+ 67},	/* 88 */
-	{10UL, b32+146, b32+155, P_BE,   0,       b32+ 89, aliases+  4},	/* 89 */
-	{ 0UL, 0,       0,       P_BE,   0,       0,       NULL       },	/* terminating entry */
+	{64UL, b64,     b64a,    P_LE,   b64a,    b64b,    b64c,    aliases+100},	/*   0 */
+	{32UL, b32+  0, 0,       P_BE,   0,       b32+145, 0,       aliases+138},	/*   1 */
+	{40UL, b40,     0,       P_BE,   b40a,    b40b,    b40c,    aliases+ 88},	/*   2 */
+	{24UL, b32+  3, b32+ 75, P_LE,   0,       b32+150, 0,       aliases+ 60},	/*   3 */
+	{32UL, b32+  8, 0,       P_BE,   b32+204, b32+ 91, b32+155, aliases+ 82},	/*   4 */
+	{32UL, b32+  8, b32+204, P_BE,   0,       b32+  7, 0,       aliases+ 81},	/*   5 */
+	{32UL, b32+  8, b32+204, P_BE,   b32+204, b32+191, b32+155, aliases+ 76},	/*   6 */
+	{32UL, b32+  8, b32+204, P_LE,   0,       b32+ 55, 0,       aliases+130},	/*   7 */
+	{32UL, b32+  8, b32+204, P_LE,   b32+204, b32+158, b32+171, aliases+ 72},	/*   8 */
+	{16UL, b32+  9, 0,       P_BE,   0,       b32+  5, 0,       aliases+ 31},	/*   9 */
+	{16UL, b32+  9, 0,       P_BE,   b32+  1, b32+  4, b32+  9, aliases+ 30},	/*  10 */
+	{ 8UL, b32+ 10, 0,       P_BE,   0,       b32+185, 0,       aliases+106},	/*  11 */
+	{ 8UL, b32+ 10, 0,       P_BE,   b32+ 74, b32+123, b32+131, aliases+117},	/*  12 */
+	{ 8UL, b32+ 10, b32+196, P_LE,   0,       b32+161, 0,       aliases+121},	/*  13 */
+	{31UL, b32+ 11, b32+203, P_BE,   b32+203, b32+ 25, b32+119, aliases+ 71},	/*  14 */
+	{ 6UL, b32+ 13, 0,       P_LE,   0,       b32+ 24, 0,       aliases+ 96},	/*  15 */
+	{82UL, b82,     0,       P_LE,   0,       b82a,    0,       aliases+124},	/*  16 */
+	{16UL, b32+ 17, 0,       P_BE,   0,       b32+ 52, 0,       aliases+139},	/*  17 */
+	{16UL, b32+ 17, 0,       P_BE,   b32+200, b32+160, b32+ 28, aliases+ 36},	/*  18 */
+	{16UL, b32+ 17, 0,       P_LE,   0,       b32+ 37, 0,       aliases+131},	/*  19 */
+	{16UL, b32+ 17, b32+ 28, P_BE,   0,       b32+176, 0,       aliases+ 21},	/*  20 */
+	{16UL, b32+ 17, b32+107, P_LE,   0,       b32+ 42, 0,       aliases+ 53},	/*  21 */
+	{16UL, b32+ 17, b32+135, P_LE,   0,       b32+ 82, 0,       aliases+ 49},	/*  22 */
+	{16UL, b32+ 17, b32+154, P_LE,   0,       b32+147, 0,       aliases+125},	/*  23 */
+	{16UL, b32+ 17, b32+200, P_BE,   0,       b32+ 46, 0,       aliases+ 24},	/*  24 */
+	{16UL, b32+ 17, b32+200, P_BE,   b32+200, b32+168, b32+ 28, aliases+ 35},	/*  25 */
+	{16UL, b32+ 17, b32+200, P_LE,   0,       b32+ 87, 0,       aliases+ 45},	/*  26 */
+	{16UL, b32+ 17, b32+200, P_LE,   b32+200, b32+113, b32+183, aliases+135},	/*  27 */
+	{ 7UL, b32+ 18, 0,       P_BE,   0,       b32+179, 0,       aliases+103},	/*  28 */
+	{ 6UL, b32+ 26, b32+190, P_BE,   0,       b32+181, 0,       aliases+ 93},	/*  29 */
+	{ 8UL, b32+ 27, 0,       P_BE,   0,       b32+ 56, 0,       aliases+114},	/*  30 */
+	{ 8UL, b32+ 27, b32+192, P_BE,   0,       b32+ 94, 0,       aliases+116},	/*  31 */
+	{ 8UL, b32+ 27, b32+196, P_BE,   b32+196, b32+ 69, b32+153, aliases+122},	/*  32 */
+	{ 8UL, b32+ 27, b32+196, P_LE,   0,       b32+115, 0,       aliases+113},	/*  33 */
+	{16UL, b32+ 29, b32+200, P_BE,   b32+200, b32+128, b32+175, aliases+ 48},	/*  34 */
+	{32UL, b32+ 30, b32+204, P_LE,   b32+204, b32+174, b32+142, aliases+ 83},	/*  35 */
+	{14UL, b32+ 34, 0,       P_LE,   0,       b32+ 35, 0,       aliases+ 14},	/*  36 */
+	{ 5UL, b32+ 45, b32+189, P_LE,   b32+189, b32+156, b32+ 48, aliases+ 91},	/*  37 */
+	{ 8UL, b32+ 47, 0,       P_BE,   0,       b32+ 60, 0,       aliases+120},	/*  38 */
+	{ 8UL, b32+ 47, b32+196, P_BE,   b32+196, b32+172, b32+ 62, aliases+108},	/*  39 */
+	{ 4UL, b32+ 48, 0,       P_LE,   0,       b32+ 88, 0,       aliases+ 87},	/*  40 */
+	{ 4UL, b32+ 48, b32+182, P_BE,   b32+182, b32+133, b32+ 32, aliases+ 86},	/*  41 */
+	{ 8UL, b32+ 50, 0,       P_LE,   0,       b32+123, 0,       aliases+119},	/*  42 */
+	{24UL, b32+ 53, b32+201, P_BE,   b32+201, b32+140, b32+ 20, aliases+ 63},	/*  43 */
+	{ 8UL, b32+ 58, 0,       P_LE,   0,       b32+ 21, 0,       aliases+111},	/*  44 */
+	{16UL, b32+ 59, 0,       P_BE,   b32+200, b32+151, b32+124, aliases+ 33},	/*  45 */
+	{16UL, b32+ 59, 0,       P_LE,   b32+200, b32+180, b32+ 85, aliases+ 32},	/*  46 */
+	{64UL, b64d,    0,       P_BE,   0,       b64e,    0,       aliases+ 97},	/*  47 */
+	{64UL, b64d,    b64a,    P_BE,   b64a,    b64f,    b64g,    aliases+101},	/*  48 */
+	{64UL, b64d,    b64a,    P_LE,   b64a,    b64h,    b64i,    aliases+102},	/*  49 */
+	{ 5UL, b32+ 65, b32+ 65, P_BE,   0,       0,       0,       aliases+ 89},	/*  50 */
+	{ 8UL, b32+ 66, 0,       P_BE,   b32+196, b32+114, b32+ 73, aliases+115},	/*  51 */
+	{16UL, b32+ 76, 0,       P_BE,   0,       b32+ 77, 0,       aliases+ 46},	/*  52 */
+	{10UL, b32+ 78, 0,       P_BE,   b32+197, b32+ 67, b32+ 51, aliases+  5},	/*  53 */
+	{24UL, b32+ 79, b32+130, P_BE,   0,       b32+ 31, 0,       aliases+ 62},	/*  54 */
+	{24UL, b32+ 79, b32+194, P_BE,   0,       b32+ 93, 0,       aliases+ 61},	/*  55 */
+	{ 3UL, b32+ 80, 0,       P_BE,   b32+173, b32+ 95, b32+ 61, aliases+ 68},	/*  56 */
+	{ 3UL, b32+ 80, b32+173, P_LE,   0,       b32+148, 0,       aliases+ 69},	/*  57 */
+	{11UL, b32+ 81, 0,       P_BE,   0,       b32+ 14, 0,       aliases+  7},	/*  58 */
+	{ 6UL, b32+ 83, 0,       P_LE,   0,       b32+116, 0,       aliases+ 94},	/*  59 */
+	{16UL, b32+ 86, 0,       P_BE,   0,       b32+146, 0,       aliases+ 42},	/*  60 */
+	{11UL, b32+ 89, b32+  6, P_BE,   0,       b32+138, 0,       aliases+  6},	/*  61 */
+	{16UL, b32+ 90, 0,       P_BE,   0,       b32+ 36, 0,       aliases+ 47},	/*  62 */
+	{24UL, b32+ 96, 0,       P_BE,   0,       b32+ 39, 0,       aliases+ 65},	/*  63 */
+	{24UL, b32+ 96, b32+201, P_BE,   b32+201, b32+ 33, b32+ 99, aliases+ 67},	/*  64 */
+	{16UL, b32+ 97, 0,       P_BE,   0,       b32+195, 0,       aliases+ 22},	/*  65 */
+	{16UL, b32+ 97, 0,       P_LE,   0,       b32+143, 0,       aliases+  0},	/*  66 */
+	{16UL, b32+ 97, 0,       P_LE,   b32+200, b32+ 63, b32+134, aliases+ 44},	/*  67 */
+	{16UL, b32+ 97, b32+ 98, P_BE,   0,       b32+121, 0,       aliases+ 29},	/*  68 */
+	{16UL, b32+ 97, b32+200, P_BE,   0,       b32+132, 0,       aliases+ 27},	/*  69 */
+	{16UL, b32+ 97, b32+200, P_LE,   0,       b32+ 70, 0,       aliases+132},	/*  70 */
+	{16UL, b32+ 97, b32+200, P_LE,   b32+200, b32+139, b32+134, aliases+ 55},	/*  71 */
+	{14UL, b32+100, 0,       P_BE,   b32+199, b32+152, b32+ 15, aliases+ 15},	/*  72 */
+	{30UL, b32+101, b32+202, P_BE,   b32+202, b32+ 19, b32+165, aliases+ 70},	/*  73 */
+	{12UL, b32+102, 0,       P_BE,   0,       b32+187, 0,       aliases+ 10},	/*  74 */
+	{12UL, b32+102, 0,       P_BELE, 0,       b32+170, 0,       aliases+ 12},	/*  75 */
+	{32UL, b32+103, 0,       P_BE,   0,       b32+ 49, 0,       aliases+ 85},	/*  76 */
+	{21UL, b32+104, 0,       P_BE,   0,       b32+ 92, 0,       aliases+ 58},	/*  77 */
+	{24UL, b32+105, 0,       P_BE,   0,       b32+159, 0,       aliases+ 64},	/*  78 */
+	{24UL, b32+105, b32+141, P_BE,   0,       b32+ 38, 0,       aliases+ 59},	/*  79 */
+	{ 7UL, b32+108, 0,       P_BE,   0,       b32+149, 0,       aliases+105},	/*  80 */
+	{15UL, b32+109, 0,       P_BE,   0,       b32+ 12, 0,       aliases+ 16},	/*  81 */
+	{16UL, b32+110, 0,       P_BE,   0,       b32+163, 0,       aliases+ 51},	/*  82 */
+	{10UL, b32+111, 0,       P_BE,   0,       b32+ 84, 0,       aliases+  3},	/*  83 */
+	{ 8UL, b32+117, 0,       P_BE,   0,       b32+179, 0,       aliases+118},	/*  84 */
+	{ 8UL, b32+117, 0,       P_LE,   0,       b32+ 40, 0,       aliases+123},	/*  85 */
+	{ 8UL, b32+117, b32+196, P_BE,   0,       b32+169, 0,       aliases+110},	/*  86 */
+	{ 6UL, b32+118, b32+190, P_BE,   0,       b32+ 54, 0,       aliases+ 92},	/*  87 */
+	{ 7UL, b32+120, b32+193, P_LE,   0,       b32+125, 0,       aliases+104},	/*  88 */
+	{16UL, b32+122, 0,       P_BE,   0,       b32+ 16, 0,       aliases+ 52},	/*  89 */
+	{ 8UL, b32+126, 0,       P_LE,   0,       b32+ 41, 0,       aliases+109},	/*  90 */
+	{ 5UL, b32+127, 0,       P_LE,   0,       b32+ 57, 0,       aliases+ 90},	/*  91 */
+	{32UL, b32+129, b32+204, P_LE,   b32+204, b32+106, b32+ 64, aliases+ 84},	/*  92 */
+	{17UL, b32+137, 0,       P_BE,   0,       b32+ 43, 0,       aliases+ 57},	/*  93 */
+	{ 6UL, b32+144, 0,       P_BE,   b32+190, b32+ 71, b32+178, aliases+ 95},	/*  94 */
+	{16UL, b32+157, b32+200, P_BE,   0,       b32+ 72, 0,       aliases+ 26},	/*  95 */
+	{15UL, b32+162, 0,       P_BE,   b32+  2, b32+ 68, b32+162, aliases+ 17},	/*  96 */
+	{12UL, b32+164, 0,       P_BE,   b32+198, b32+136, b32+ 23, aliases+ 11},	/*  97 */
+	{ 8UL, b32+167, 0,       P_BE,   0,       b32+144, 0,       aliases+112},	/*  98 */
+	{13UL, b32+177, 0,       P_BE,   0,       b32+ 44, 0,       aliases+ 13},	/*  99 */
+	{12UL, b32+184, b32+198, P_BE,   0,       b32+166, 0,       aliases+  9},	/* 100 */
+	{32UL, b32+186, b32+204, P_LE,   b32+204, b32+ 22, b32+112, aliases+ 75},	/* 101 */
+	{10UL, b32+188, b32+197, P_BE,   0,       b32+111, 0,       aliases+  4},	/* 102 */
+	{ 0UL, 0,       0,       P_BE,   0,       0,       0,       NULL       },	/* terminating entry */
 };
-#    define NPRESETS 90
+#    define NPRESETS 103
 
 /* List of names with pointers to models, pre-sorted for use with bsearch() */
 static const struct malias aliases[] = {
-	{"ARC",			models+59},	/*   0 */
-	{"B-CRC-32",		models+ 5},	/*   1 */
-	{"CKSUM",		models+ 3},	/*   2 */
-	{"CRC-10",		models+74},	/*   3 */
-	{"CRC-10/CDMA2000",	models+89},	/*   4 */
-	{"CRC-11",		models+55},	/*   5 */
-	{"CRC-11/UMTS",		models+52},	/*   6 */
-	{"CRC-12/3GPP",		models+67},	/*   7 */
-	{"CRC-12/CDMA2000",	models+87},	/*   8 */
-	{"CRC-12/DECT",		models+66},	/*   9 */
-	{"CRC-12/UMTS",		models+67},	/*  10 */
-	{"CRC-13/BBC",		models+86},	/*  11 */
-	{"CRC-14/DARC",		models+33},	/*  12 */
-	{"CRC-15",		models+72},	/*  13 */
-	{"CRC-15/MPT1327",	models+84},	/*  14 */
-	{"CRC-16",		models+59},	/*  15 */
-	{"CRC-16/ACORN",	models+16},	/*  16 */
-	{"CRC-16/ARC",		models+59},	/*  17 */
-	{"CRC-16/AUG-CCITT",	models+18},	/*  18 */
-	{"CRC-16/BUYPASS",	models+58},	/*  19 */
-	{"CRC-16/CCITT",	models+17},	/*  20 */
-	{"CRC-16/CCITT-FALSE",	models+22},	/*  21 */
-	{"CRC-16/CCITT-TRUE",	models+17},	/*  22 */
-	{"CRC-16/CDMA2000",	models+83},	/*  23 */
-	{"CRC-16/CMS",		models+62},	/*  24 */
-	{"CRC-16/DARC",		models+23},	/*  25 */
-	{"CRC-16/DDS-110",	models+61},	/*  26 */
-	{"CRC-16/DECT-R",	models+ 9},	/*  27 */
-	{"CRC-16/DECT-X",	models+ 8},	/*  28 */
-	{"CRC-16/DNP",		models+43},	/*  29 */
-	{"CRC-16/EN-13757",	models+42},	/*  30 */
-	{"CRC-16/EPC",		models+23},	/*  31 */
-	{"CRC-16/GENIBUS",	models+23},	/*  32 */
-	{"CRC-16/I-CODE",	models+23},	/*  33 */
-	{"CRC-16/IBM-SDLC",	models+25},	/*  34 */
-	{"CRC-16/IEC-61158-2",	models+31},	/*  35 */
-	{"CRC-16/ISO-HDLC",	models+25},	/*  36 */
-	{"CRC-16/LHA",		models+59},	/*  37 */
-	{"CRC-16/LJ1200",	models+54},	/*  38 */
-	{"CRC-16/LTE",		models+16},	/*  39 */
-	{"CRC-16/MAXIM",	models+60},	/*  40 */
-	{"CRC-16/MCRF4XX",	models+24},	/*  41 */
-	{"CRC-16/OPENSAFETY-A",	models+48},	/*  42 */
-	{"CRC-16/OPENSAFETY-B",	models+56},	/*  43 */
-	{"CRC-16/PROFIBUS",	models+31},	/*  44 */
-	{"CRC-16/RIELLO",	models+20},	/*  45 */
-	{"CRC-16/SPI-FUJITSU",	models+18},	/*  46 */
-	{"CRC-16/T10-DIF",	models+73},	/*  47 */
-	{"CRC-16/TELEDISK",	models+80},	/*  48 */
-	{"CRC-16/TMS37157",	models+19},	/*  49 */
-	{"CRC-16/UMTS",		models+58},	/*  50 */
-	{"CRC-16/USB",		models+64},	/*  51 */
-	{"CRC-16/VERIFONE",	models+58},	/*  52 */
-	{"CRC-24",		models+70},	/*  53 */
-	{"CRC-24/BLE",		models+ 2},	/*  54 */
-	{"CRC-24/FLEXRAY-A",	models+50},	/*  55 */
-	{"CRC-24/FLEXRAY-B",	models+49},	/*  56 */
-	{"CRC-24/INTERLAKEN",	models+40},	/*  57 */
-	{"CRC-24/LTE-A",	models+69},	/*  58 */
-	{"CRC-24/LTE-B",	models+57},	/*  59 */
-	{"CRC-24/OPENPGP",	models+70},	/*  60 */
-	{"CRC-3/ROHC",		models+51},	/*  61 */
-	{"CRC-30/CDMA",		models+65},	/*  62 */
-	{"CRC-31/PHILIPS",	models+13},	/*  63 */
-	{"CRC-32",		models+ 7},	/*  64 */
-	{"CRC-32/AAL5",		models+ 5},	/*  65 */
-	{"CRC-32/ADCCP",	models+ 7},	/*  66 */
-	{"CRC-32/AUTOSAR",	models+88},	/*  67 */
-	{"CRC-32/BZIP2",	models+ 5},	/*  68 */
-	{"CRC-32/CASTAGNOLI",	models+32},	/*  69 */
-	{"CRC-32/DECT-B",	models+ 5},	/*  70 */
-	{"CRC-32/INTERLAKEN",	models+32},	/*  71 */
-	{"CRC-32/ISCSI",	models+32},	/*  72 */
-	{"CRC-32/MPEG-2",	models+ 4},	/*  73 */
-	{"CRC-32/POSIX",	models+ 3},	/*  74 */
-	{"CRC-32C",		models+32},	/*  75 */
-	{"CRC-32D",		models+82},	/*  76 */
-	{"CRC-32Q",		models+68},	/*  77 */
-	{"CRC-4/INTERLAKEN",	models+38},	/*  78 */
-	{"CRC-4/ITU",		models+37},	/*  79 */
-	{"CRC-40/GSM",		models+ 1},	/*  80 */
-	{"CRC-5/EPC",		models+47},	/*  81 */
-	{"CRC-5/ITU",		models+81},	/*  82 */
-	{"CRC-5/USB",		models+34},	/*  83 */
-	{"CRC-6/CDMA2000-A",	models+78},	/*  84 */
-	{"CRC-6/CDMA2000-B",	models+27},	/*  85 */
-	{"CRC-6/DARC",		models+53},	/*  86 */
-	{"CRC-6/ITU",		models+14},	/*  87 */
-	{"CRC-64",		models+44},	/*  88 */
-	{"CRC-64/WE",		models+45},	/*  89 */
-	{"CRC-64/XZ",		models+46},	/*  90 */
-	{"CRC-7",		models+26},	/*  91 */
-	{"CRC-7/ROHC",		models+79},	/*  92 */
-	{"CRC-7/UMTS",		models+71},	/*  93 */
-	{"CRC-8",		models+10},	/*  94 */
-	{"CRC-8/AES",		models+30},	/*  95 */
-	{"CRC-8/AUTOSAR",	models+36},	/*  96 */
-	{"CRC-8/CDMA2000",	models+77},	/*  97 */
-	{"CRC-8/DARC",		models+41},	/*  98 */
-	{"CRC-8/DVB-S2",	models+85},	/*  99 */
-	{"CRC-8/EBU",		models+30},	/* 100 */
-	{"CRC-8/I-CODE",	models+28},	/* 101 */
-	{"CRC-8/ITU",		models+11},	/* 102 */
-	{"CRC-8/LTE",		models+75},	/* 103 */
-	{"CRC-8/MAXIM",		models+39},	/* 104 */
-	{"CRC-8/OPENSAFETY",	models+35},	/* 105 */
-	{"CRC-8/ROHC",		models+12},	/* 106 */
-	{"CRC-8/SAE-J1850",	models+29},	/* 107 */
-	{"CRC-8/WCDMA",		models+76},	/* 108 */
-	{"CRC-82/DARC",		models+15},	/* 109 */
-	{"CRC-A",		models+21},	/* 110 */
-	{"CRC-B",		models+25},	/* 111 */
-	{"CRC-CCITT",		models+17},	/* 112 */
-	{"CRC-IBM",		models+59},	/* 113 */
-	{"DOW-CRC",		models+39},	/* 114 */
-	{"JAMCRC",		models+ 6},	/* 115 */
-	{"KERMIT",		models+17},	/* 116 */
-	{"MODBUS",		models+63},	/* 117 */
-	{"PKZIP",		models+ 7},	/* 118 */
-	{"R-CRC-16",		models+ 9},	/* 119 */
-	{"X-25",		models+25},	/* 120 */
-	{"X-CRC-12",		models+66},	/* 121 */
-	{"X-CRC-16",		models+ 8},	/* 122 */
-	{"XFER",		models+ 0},	/* 123 */
-	{"XMODEM",		models+16},	/* 124 */
-	{"ZMODEM",		models+16},	/* 125 */
+	{"ARC",			models+ 66},	/*   0 */
+	{"B-CRC-32",		models+  6},	/*   1 */
+	{"CKSUM",		models+  4},	/*   2 */
+	{"CRC-10",		models+ 83},	/*   3 */
+	{"CRC-10/CDMA2000",	models+102},	/*   4 */
+	{"CRC-10/GSM",		models+ 53},	/*   5 */
+	{"CRC-11",		models+ 61},	/*   6 */
+	{"CRC-11/UMTS",		models+ 58},	/*   7 */
+	{"CRC-12/3GPP",		models+ 75},	/*   8 */
+	{"CRC-12/CDMA2000",	models+100},	/*   9 */
+	{"CRC-12/DECT",		models+ 74},	/*  10 */
+	{"CRC-12/GSM",		models+ 97},	/*  11 */
+	{"CRC-12/UMTS",		models+ 75},	/*  12 */
+	{"CRC-13/BBC",		models+ 99},	/*  13 */
+	{"CRC-14/DARC",		models+ 36},	/*  14 */
+	{"CRC-14/GSM",		models+ 72},	/*  15 */
+	{"CRC-15",		models+ 81},	/*  16 */
+	{"CRC-15/MPT1327",	models+ 96},	/*  17 */
+	{"CRC-16",		models+ 66},	/*  18 */
+	{"CRC-16/ACORN",	models+ 17},	/*  19 */
+	{"CRC-16/ARC",		models+ 66},	/*  20 */
+	{"CRC-16/AUG-CCITT",	models+ 20},	/*  21 */
+	{"CRC-16/BUYPASS",	models+ 65},	/*  22 */
+	{"CRC-16/CCITT",	models+ 19},	/*  23 */
+	{"CRC-16/CCITT-FALSE",	models+ 24},	/*  24 */
+	{"CRC-16/CCITT-TRUE",	models+ 19},	/*  25 */
+	{"CRC-16/CDMA2000",	models+ 95},	/*  26 */
+	{"CRC-16/CMS",		models+ 69},	/*  27 */
+	{"CRC-16/DARC",		models+ 25},	/*  28 */
+	{"CRC-16/DDS-110",	models+ 68},	/*  29 */
+	{"CRC-16/DECT-R",	models+ 10},	/*  30 */
+	{"CRC-16/DECT-X",	models+  9},	/*  31 */
+	{"CRC-16/DNP",		models+ 46},	/*  32 */
+	{"CRC-16/EN-13757",	models+ 45},	/*  33 */
+	{"CRC-16/EPC",		models+ 25},	/*  34 */
+	{"CRC-16/GENIBUS",	models+ 25},	/*  35 */
+	{"CRC-16/GSM",		models+ 18},	/*  36 */
+	{"CRC-16/I-CODE",	models+ 25},	/*  37 */
+	{"CRC-16/IBM-SDLC",	models+ 27},	/*  38 */
+	{"CRC-16/IEC-61158-2",	models+ 34},	/*  39 */
+	{"CRC-16/ISO-HDLC",	models+ 27},	/*  40 */
+	{"CRC-16/LHA",		models+ 66},	/*  41 */
+	{"CRC-16/LJ1200",	models+ 60},	/*  42 */
+	{"CRC-16/LTE",		models+ 17},	/*  43 */
+	{"CRC-16/MAXIM",	models+ 67},	/*  44 */
+	{"CRC-16/MCRF4XX",	models+ 26},	/*  45 */
+	{"CRC-16/OPENSAFETY-A",	models+ 52},	/*  46 */
+	{"CRC-16/OPENSAFETY-B",	models+ 62},	/*  47 */
+	{"CRC-16/PROFIBUS",	models+ 34},	/*  48 */
+	{"CRC-16/RIELLO",	models+ 22},	/*  49 */
+	{"CRC-16/SPI-FUJITSU",	models+ 20},	/*  50 */
+	{"CRC-16/T10-DIF",	models+ 82},	/*  51 */
+	{"CRC-16/TELEDISK",	models+ 89},	/*  52 */
+	{"CRC-16/TMS37157",	models+ 21},	/*  53 */
+	{"CRC-16/UMTS",		models+ 65},	/*  54 */
+	{"CRC-16/USB",		models+ 71},	/*  55 */
+	{"CRC-16/VERIFONE",	models+ 65},	/*  56 */
+	{"CRC-17/CAN-FD",	models+ 93},	/*  57 */
+	{"CRC-21/CAN-FD",	models+ 77},	/*  58 */
+	{"CRC-24",		models+ 79},	/*  59 */
+	{"CRC-24/BLE",		models+  3},	/*  60 */
+	{"CRC-24/FLEXRAY-A",	models+ 55},	/*  61 */
+	{"CRC-24/FLEXRAY-B",	models+ 54},	/*  62 */
+	{"CRC-24/INTERLAKEN",	models+ 43},	/*  63 */
+	{"CRC-24/LTE-A",	models+ 78},	/*  64 */
+	{"CRC-24/LTE-B",	models+ 63},	/*  65 */
+	{"CRC-24/OPENPGP",	models+ 79},	/*  66 */
+	{"CRC-24/OS-9",		models+ 64},	/*  67 */
+	{"CRC-3/GSM",		models+ 56},	/*  68 */
+	{"CRC-3/ROHC",		models+ 57},	/*  69 */
+	{"CRC-30/CDMA",		models+ 73},	/*  70 */
+	{"CRC-31/PHILIPS",	models+ 14},	/*  71 */
+	{"CRC-32",		models+  8},	/*  72 */
+	{"CRC-32/AAL5",		models+  6},	/*  73 */
+	{"CRC-32/ADCCP",	models+  8},	/*  74 */
+	{"CRC-32/AUTOSAR",	models+101},	/*  75 */
+	{"CRC-32/BZIP2",	models+  6},	/*  76 */
+	{"CRC-32/CASTAGNOLI",	models+ 35},	/*  77 */
+	{"CRC-32/DECT-B",	models+  6},	/*  78 */
+	{"CRC-32/INTERLAKEN",	models+ 35},	/*  79 */
+	{"CRC-32/ISCSI",	models+ 35},	/*  80 */
+	{"CRC-32/MPEG-2",	models+  5},	/*  81 */
+	{"CRC-32/POSIX",	models+  4},	/*  82 */
+	{"CRC-32C",		models+ 35},	/*  83 */
+	{"CRC-32D",		models+ 92},	/*  84 */
+	{"CRC-32Q",		models+ 76},	/*  85 */
+	{"CRC-4/INTERLAKEN",	models+ 41},	/*  86 */
+	{"CRC-4/ITU",		models+ 40},	/*  87 */
+	{"CRC-40/GSM",		models+  2},	/*  88 */
+	{"CRC-5/EPC",		models+ 50},	/*  89 */
+	{"CRC-5/ITU",		models+ 91},	/*  90 */
+	{"CRC-5/USB",		models+ 37},	/*  91 */
+	{"CRC-6/CDMA2000-A",	models+ 87},	/*  92 */
+	{"CRC-6/CDMA2000-B",	models+ 29},	/*  93 */
+	{"CRC-6/DARC",		models+ 59},	/*  94 */
+	{"CRC-6/GSM",		models+ 94},	/*  95 */
+	{"CRC-6/ITU",		models+ 15},	/*  96 */
+	{"CRC-64",		models+ 47},	/*  97 */
+	{"CRC-64/ECMA-182",	models+ 47},	/*  98 */
+	{"CRC-64/GO-ECMA",	models+ 49},	/*  99 */
+	{"CRC-64/GO-ISO",	models+  0},	/* 100 */
+	{"CRC-64/WE",		models+ 48},	/* 101 */
+	{"CRC-64/XZ",		models+ 49},	/* 102 */
+	{"CRC-7",		models+ 28},	/* 103 */
+	{"CRC-7/ROHC",		models+ 88},	/* 104 */
+	{"CRC-7/UMTS",		models+ 80},	/* 105 */
+	{"CRC-8",		models+ 11},	/* 106 */
+	{"CRC-8/AES",		models+ 33},	/* 107 */
+	{"CRC-8/AUTOSAR",	models+ 39},	/* 108 */
+	{"CRC-8/BLUETOOTH",	models+ 90},	/* 109 */
+	{"CRC-8/CDMA2000",	models+ 86},	/* 110 */
+	{"CRC-8/DARC",		models+ 44},	/* 111 */
+	{"CRC-8/DVB-S2",	models+ 98},	/* 112 */
+	{"CRC-8/EBU",		models+ 33},	/* 113 */
+	{"CRC-8/GSM-A",		models+ 30},	/* 114 */
+	{"CRC-8/GSM-B",		models+ 51},	/* 115 */
+	{"CRC-8/I-CODE",	models+ 31},	/* 116 */
+	{"CRC-8/ITU",		models+ 12},	/* 117 */
+	{"CRC-8/LTE",		models+ 84},	/* 118 */
+	{"CRC-8/MAXIM",		models+ 42},	/* 119 */
+	{"CRC-8/OPENSAFETY",	models+ 38},	/* 120 */
+	{"CRC-8/ROHC",		models+ 13},	/* 121 */
+	{"CRC-8/SAE-J1850",	models+ 32},	/* 122 */
+	{"CRC-8/WCDMA",		models+ 85},	/* 123 */
+	{"CRC-82/DARC",		models+ 16},	/* 124 */
+	{"CRC-A",		models+ 23},	/* 125 */
+	{"CRC-B",		models+ 27},	/* 126 */
+	{"CRC-CCITT",		models+ 19},	/* 127 */
+	{"CRC-IBM",		models+ 66},	/* 128 */
+	{"DOW-CRC",		models+ 42},	/* 129 */
+	{"JAMCRC",		models+  7},	/* 130 */
+	{"KERMIT",		models+ 19},	/* 131 */
+	{"MODBUS",		models+ 70},	/* 132 */
+	{"PKZIP",		models+  8},	/* 133 */
+	{"R-CRC-16",		models+ 10},	/* 134 */
+	{"X-25",		models+ 27},	/* 135 */
+	{"X-CRC-12",		models+ 74},	/* 136 */
+	{"X-CRC-16",		models+  9},	/* 137 */
+	{"XFER",		models+  1},	/* 138 */
+	{"XMODEM",		models+ 17},	/* 139 */
+	{"ZMODEM",		models+ 17},	/* 140 */
 	{NULL,			NULL     },	/* terminating entry */
 };
-#    define NALIASES 126
+#    define NALIASES 141
 
 #  endif /* BMP_BIT */
 #else /* PRESETS */
 
 static const struct mpreset models[] = {
-	{ 0UL, 0,       0,       P_BE,   0,       0,       NULL       },	/* terminating entry */
+	{ 0UL, 0, 0, P_BE, 0, 0, 0, NULL },	/* terminating entry */
 };
 #  define NPRESETS 0
 
 static const struct malias aliases[] = {
-	{NULL,			NULL     },	/* terminating entry */
+	{NULL, NULL },	/* terminating entry */
 };
 #  define NALIASES 0
 
@@ -615,10 +743,14 @@ static const struct malias aliases[] = {
 static void munpack(model_t *, const struct mpreset *);
 
 /* copy a parameter of a preset to a poly */
+
 #define PUNPACK(poly, preset, field) {\
 	unsigned long iter, idx; \
-	praloc((poly), ((preset)->field ? (preset)->width : 0UL)); \
-	for(iter=0UL, idx=0UL; iter < (poly)->length; iter += BMP_BIT, ++idx) \
+	palloc((poly), (preset)->width); \
+	if((preset)->field) \
+		for(iter=0UL, idx=0UL; \
+			iter < (poly)->length; \
+			iter += BMP_BIT, ++idx) \
 		(poly)->bitmap[idx] = (preset)->field[idx]; \
 }
 
@@ -627,55 +759,51 @@ static void munpack(model_t *, const struct mpreset *);
 
 /* Definitions */
 
-int
-mbynam(model_t *dest, const char *key) {
+int mbynam(model_t *dest, const char *key) {
 	/* Sets parameters in dest according to the model named by key.
 	 */
 	size_t left = 0, right = NALIASES, middle = 0;
 	int cmp = 1;
 	char *ukey, *uptr;
 
-	if(!aliases->name)
+	if (!aliases->name)
 		return(-1);
-	if(!(ukey = malloc((size_t) 1 + strlen(key)))) {
-		uerror("cannot allocate memory for comparison string");
-			return(0);
+	if (!(ukey = malloc((size_t) 1 + strlen(key) + 1))) {
+		uerror("[!] cannot allocate memory for comparison string");
+		return(0);
 	}
 	uptr = ukey;
 	do
 		*uptr++ = toupper(*key);
-	while(*key++);
+	while (*key++);
 
-	while(left < right && cmp) {
+	while (left < right && cmp) {
 		middle = (left >> 1) + (right >> 1);
 		cmp = strcmp(ukey, aliases[middle].name);
-		if(cmp < 0) right = middle;
-		else if(cmp > 0) left = middle + 1;
+		if (cmp < 0) right = middle;
+		else if (cmp > 0) left = middle + 1;
 	}
 	free(ukey);
 
-	if(cmp)
+	if (cmp)
 		return(0);
 	munpack(dest, aliases[middle].model);
 	return(1);
 }
 
-void
-mbynum(model_t *dest, int num) {
+void mbynum(model_t *dest, int num) {
 	/* Sets parameters in dest according to the model indexed by num. */
-	if(num > NPRESETS)
+	if (num > NPRESETS)
 		num = NPRESETS;
 	munpack(dest, num+models);
 }
 
-int
-mcount(void) {
+int mcount(void) {
 	/* Returns the number of preset models. */
-	return(NPRESETS);
+	return (NPRESETS);
 }
 
-char *
-mnames(void) {
+char * mnames(void) {
 	/* Returns a malloc()-ed string of the names of all preset
 	 * models, separated by newlines and terminated by NULL.
 	 * Aliases are not listed.
@@ -684,17 +812,17 @@ mnames(void) {
 	char *string, *sptr;
 	const struct malias *aptr = aliases;
 
-	while(aptr->name) {
-		if(aptr == aptr->model->alias)
+	while (aptr->name) {
+		if (aptr == aptr->model->alias)
 			size += strlen(aptr->name) + 1;
 		++aptr;
 	}
-	if(!size) return(NULL);
-	if((string = malloc(size))) {
+	if (!size) return(NULL);
+	if ((string = malloc(size))) {
 		aptr = aliases;
 		sptr = string;
-		while(aptr->name) {
-			if(aptr == aptr->model->alias) {
+		while (aptr->name) {
+			if (aptr == aptr->model->alias) {
 				strcpy(sptr, aptr->name);
 				sptr += strlen(aptr->name);
 				*sptr++ = '\n';
@@ -708,62 +836,60 @@ mnames(void) {
 	return(string);
 }
 
-void
-mmatch(model_t *model, int flags) {
+void mmatch(model_t *model, int flags) {
 	/* searches models[] for a model matching the argument, and links a name if found
 	 * if flags & M_OVERWR, copies the found model onto the argument. */
 	size_t left = 0, right = NPRESETS, middle = 0;
 	poly_t poly = PZERO;
 	int cmp = 1;
-	if(!model) return;
+	if (!model) return;
 
-	while(left < right && cmp) {
+	while (left < right && cmp) {
 		middle = (left >> 1) + (right >> 1);
 		PUNPACK(&poly, models+middle, bspoly);
 		cmp = psncmp(&model->spoly, &poly);
-		if(!cmp) {
+		if (!cmp) {
 			PUNPACK(&poly, models+middle, binit);
 			cmp = psncmp(&model->init, &poly);
 		}
-		if(!cmp) {
-			if((model->flags & P_REFIN) && (~models[middle].flags & P_REFIN))
+		if (!cmp) {
+			if ((model->flags & P_REFIN) && (~models[middle].flags & P_REFIN))
 				cmp = 1;
-			else if((~model->flags & P_REFIN) && (models[middle].flags & P_REFIN))
+			else if ((~model->flags & P_REFIN) && (models[middle].flags & P_REFIN))
 				cmp = -1;
-			else if((model->flags & P_REFOUT) && (~models[middle].flags & P_REFOUT))
+			else if ((model->flags & P_REFOUT) && (~models[middle].flags & P_REFOUT))
 				cmp = 1;
-			else if((~model->flags & P_REFOUT) && (models[middle].flags & P_REFOUT))
+			else if ((~model->flags & P_REFOUT) && (models[middle].flags & P_REFOUT))
 				cmp = -1;
 			else {
 				PUNPACK(&poly, models+middle, bxorout);
 				cmp = psncmp(&model->xorout, &poly);
 			}
 		}
-		if(cmp < 0) right = middle;
-		else if(cmp > 0) left = middle + 1;
+		if (cmp < 0) right = middle;
+		else if (cmp > 0) left = middle + 1;
 	}
 	pfree(&poly);
 
-	if(!cmp) {
+	if (!cmp) {
 		model->name = models[middle].alias->name;
-		if(flags & M_OVERWR)
+		if (flags & M_OVERWR)
 			munpack(model, models+middle);
 	}
 }
 
 /* Private functions */
-
-static void
-munpack(model_t *dest, const struct mpreset *src) {
+static void munpack(model_t *dest, const struct mpreset *src) {
 	/* Copies the parameters of src to dest.
 	 * dest must be an initialised model.
 	 */
-	if(!dest || !src) return;
+	if (!dest || !src) return;
 	MUNPACK(spoly);
 	MUNPACK(init);
 	MUNPACK(xorout);
 	MUNPACK(check);
+	MUNPACK(magic);
 	dest->flags = src->flags;
 	/* link to the name as it is static */
-	dest->name = src->alias->name;
+	dest->name = (src->alias) ? src->alias->name : NULL;
 }

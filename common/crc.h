@@ -9,9 +9,7 @@
 #ifndef __CRC_H
 #define __CRC_H
 
-#include <stdint.h>		//uint32+
-#include <stdbool.h>	//bool
-#include <stddef.h>
+#include "common.h"	//stdint, stddef, stdbool
 #include "util.h"	// reflect, bswap_16
 
 typedef struct crc {
@@ -55,22 +53,14 @@ extern uint32_t crc_finish(crc_t *crc);
 // Calculate CRC-8/Maxim checksum
 uint32_t CRC8Maxim(uint8_t *buff, size_t size);
 
+// Calculate CRC-8 Mifare MAD checksum
+uint32_t CRC8Mad(uint8_t *buff, size_t size);
+
 // Calculate CRC-4/Legic checksum
 uint32_t CRC4Legic(uint8_t *buff, size_t size);
 
 // Calculate CRC-8/Legic checksum
 uint32_t CRC8Legic(uint8_t *buff, size_t size);
-
-// Calculate CRC-16/Legic checksum
-// the initial_value is based on the previous legic_Crc8 of the UID.
-// ie:  uidcrc = 0x78  then initial_value == 0x7878
-uint32_t CRC16Legic(uint8_t *buff, size_t size, uint8_t uidcrc);
-
-// test crc 16.
-uint32_t CRC16_DNP(uint8_t *buff, size_t size);
-uint32_t CRC16_CCITT(uint8_t *buff, size_t size);
-uint32_t CRC16_Iso15693(uint8_t *buff, size_t size);
-uint32_t CRC16_ICLASS(uint8_t *buff, size_t size);
 
 /* Static initialization of a crc structure */
 #define CRC_INITIALIZER(_order, _polynom, _initial_value, _final_xor) { \
@@ -80,8 +70,8 @@ uint32_t CRC16_ICLASS(uint8_t *buff, size_t size);
 	.initial_value = (_initial_value), \
 	.final_xor = (_final_xor), \
 	.mask = ((1L<<(_order))-1) \
-	.refin = FALSE, \
-	.refout = FALSE \
+	.refin = false, \
+	.refout = false \
 	}
 
 #endif /* __CRC_H */

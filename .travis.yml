@@ -1,35 +1,51 @@
-# Travis-CI Build for Iceman Fork / Proxmark3
+# Travis-CI Build for IcemanFork/Proxmark3
 language: c
 
 #default linux build env is: Ubuntu 14.04 trusty
-dist: trusty
-sudo: required
-
-#install:
 compiler: gcc
 
-# multi platform build test
-# build matrix,  
-# LINUX : Using trusty beta build environment,  based on Ubuntu 14.04
-# MAC OS: 
+# Test on Linux and MacOS
 matrix:
   include:
+#    - os: osx
+#      osx_image: xcode7.3	# OS X 10.11
+#    - os: osx
+#      osx_image: xcode8.3   # OS X 10.12
+#    - os: osx
+#      osx_image: xcode9     # OS X 10.13
     - os: osx
-      osx_image: xcode7.3
-  allow_failures:
-    - os: osx
+      osx_image: xcode9.1   # OS X 10.13.1
+    - os: linux
+      dist: trusty
+      sudo: required
 
-# MAC OS - dependencies?
 before_install:
-  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew update          ; fi
+## Install ARM toolchain on Linux.
+## add our homebrew tap for MacOS
+## Note: all dependencies on MacOS should be resolved by the brew install command
+  if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then 
+    sudo apt-get update -qq;
+    sudo apt-get install -y gcc-arm-none-eabi;
+  elif [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+    brew update;
+    brew tap iceman1001/proxmark3;
+  fi
 
-## Install mainline ARM toolchain.  gcc-arm-none-eabi is available
-## in Ubuntu >= 14.04, but this external PPA is needed for 12.04.
+install:
+  if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then 
+    brew info proxmark3;
+    brew options proxmark3;	
+    brew install --HEAD proxmark3;
+  elif [[ "$TRAVIS_OS_NAME" == "linux" ]]; then 
+    make all;
+  fi
+
 before_script:
-  - sudo apt-add-repository 'deb http://archive.ubuntu.com/ubuntu trusty main universe multiverse restricted';
-  - sudo apt-get update -qq;
-  - sudo apt-get install -y gcc-arm-none-eabi;
-  - git fetch --all
 
-#make command
-script: "make all"
+script: 
+## start and run a test script
+  if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then 
+    proxmark3 -h ;
+  elif [[ "$TRAVIS_OS_NAME" == "linux" ]]; then 
+    ./client/proxmark3 -h ;
+  fi

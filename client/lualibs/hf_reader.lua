@@ -21,13 +21,7 @@ local function sendToDevice(command, ignoreresponse)
 	return response,nil
 end
 
--------------------------------------------------------
--- This will be moved to a separate 14443B library
--------------------------------------------------------
 
-local reader14443B = {
-	read = reader14443B.read14443b()
-}	
 -------------------------------------------------------
 -- This will be moved to a separate 1593 library
 -------------------------------------------------------
@@ -145,7 +139,7 @@ local function read15693()
 		return nil, "15693 sysinfo: no answer"
 	end
 
-	local count,cmd,recvLen,arg1,arg2 = bin.unpack('LLLL',result)
+	local count,cmd,recvlen,arg1,arg2 = bin.unpack('LLLL',result)
 	data = string.sub(result,recvlen)
 	info, err = parse15693(data)
 	

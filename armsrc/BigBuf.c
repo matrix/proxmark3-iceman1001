@@ -63,6 +63,10 @@ void BigBuf_Clear_ext(bool verbose)
 		Dbprintf("Buffer cleared (%i bytes)", BIGBUF_SIZE);
 }
 
+void BigBuf_Clear_EM(void){
+	memset(BigBuf_get_EM_addr(), 0, CARD_MEMORY_SIZE);
+}
+
 void BigBuf_Clear_keep_EM(void)
 {
 	memset(BigBuf, 0, BigBuf_hi);
@@ -120,9 +124,15 @@ uint16_t BigBuf_max_traceLen(void)
 void clear_trace() {
 	traceLen = 0;
 }
-
+void set_tracelen(uint16_t value) {
+    traceLen = value;
+}
 void set_tracing(bool enable) {
 	tracing = enable;
+}
+
+bool get_tracing(void) {
+	return tracing;
 }
 
 /**
@@ -142,7 +152,7 @@ uint16_t BigBuf_get_traceLen(void)
 **/
 bool RAMFUNC LogTrace(const uint8_t *btBytes, uint16_t iLen, uint32_t timestamp_start, uint32_t timestamp_end, uint8_t *parity, bool readerToTag)
 {
-	if (!tracing) return FALSE;
+	if (!tracing) return false;
 
 	uint8_t *trace = BigBuf_get_addr();
 
@@ -151,8 +161,8 @@ bool RAMFUNC LogTrace(const uint8_t *btBytes, uint16_t iLen, uint32_t timestamp_
 
 	// Return when trace is full
 	if (traceLen + sizeof(iLen) + sizeof(timestamp_start) + sizeof(duration) + num_paritybytes + iLen >= BigBuf_max_traceLen()) {
-		tracing = FALSE;	// don't trace any more
-		return FALSE;
+		tracing = false;	// don't trace any more
+		return false;
 	}
 	// Traceformat:
 	// 32 bits timestamp (little endian)
@@ -196,7 +206,7 @@ bool RAMFUNC LogTrace(const uint8_t *btBytes, uint16_t iLen, uint32_t timestamp_
 	}
 	traceLen += num_paritybytes;
 
-	return TRUE;
+	return true;
 }
 
 
@@ -207,12 +217,12 @@ int LogTraceHitag(const uint8_t * btBytes, int iBits, int iSamples, uint32_t dwP
 	  that this logger takes number of bits as argument, not number of bytes.
 	  **/
 
-	if (!tracing) return FALSE;
+	if (!tracing) return false;
 
 	uint8_t *trace = BigBuf_get_addr();
 	uint16_t iLen = nbytes(iBits);
 	// Return when trace is full
-	if (traceLen + sizeof(rsamples) + sizeof(dwParity) + sizeof(iBits) + iLen > BigBuf_max_traceLen()) return FALSE;
+	if (traceLen + sizeof(rsamples) + sizeof(dwParity) + sizeof(iBits) + iLen > BigBuf_max_traceLen()) return false;
 
 	//Hitag traces appear to use this traceformat:
 	// 32 bits timestamp (little endian,Highest Bit used as readerToTag flag)
@@ -239,7 +249,7 @@ int LogTraceHitag(const uint8_t * btBytes, int iBits, int iSamples, uint32_t dwP
 	memcpy(trace + traceLen, btBytes, iLen);
 	traceLen += iLen;
 
-	return TRUE;
+	return true;
 }
 
 

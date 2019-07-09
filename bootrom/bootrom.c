@@ -10,25 +10,25 @@
 #include "usb_cdc.h"
 #include "cmd.h"
 
-void DbpString(char *str) {
-	byte_t len = 0;
-	while (str[len] != 0x00)
-		++len;
-	
-	cmd_send(CMD_DEBUG_PRINT_STRING,len,0,0,(byte_t*)str,len);
-}
-
 struct common_area common_area __attribute__((section(".commonarea")));
 unsigned int start_addr, end_addr, bootrom_unlocked;
 extern char _bootrom_start, _bootrom_end, _flash_start, _flash_end;
+extern uint32_t _osimage_entry;
 
-static void ConfigClocks(void)
-{
+void DbpString(char *str) {
+	byte_t len = 0;
+	while (str[len] != 0x00)
+		len++;
+	
+	cmd_send(CMD_DEBUG_PRINT_STRING, len, 0, 0, (byte_t*)str, len);
+}
+
+static void ConfigClocks(void) {
     // we are using a 16 MHz crystal as the basis for everything
     // slow clock runs at 32Khz typical regardless of crystal
 
     // enable system clock and USB clock
-    AT91C_BASE_PMC->PMC_SCER = AT91C_PMC_PCK | AT91C_PMC_UDP;
+    AT91C_BASE_PMC->PMC_SCER |= AT91C_PMC_PCK | AT91C_PMC_UDP;
 
 	// enable the clock to the following peripherals
     AT91C_BASE_PMC->PMC_PCER =
@@ -56,7 +56,8 @@ static void ConfigClocks(void)
     // PLL output is MAINCK * multiplier / divisor = 16Mhz * 12 / 2 = 96Mhz
     AT91C_BASE_PMC->PMC_PLLR =
     	PMC_PLL_DIVISOR(2) |
-		PMC_PLL_COUNT_BEFORE_LOCK(0x50) |
+		//PMC_PLL_COUNT_BEFORE_LOCK(0x10) |
+		PMC_PLL_COUNT_BEFORE_LOCK(0x3F) |
 		PMC_PLL_FREQUENCY_RANGE(0) |
 		PMC_PLL_MULTIPLIER(12) |
 		PMC_PLL_USB_DIVISOR(1);
@@ -80,15 +81,15 @@ static void ConfigClocks(void)
 }
 
 static void Fatal(void) {
-  for(;;);
+  for(;;) {};
 }
 
 void UsbPacketReceived(uint8_t *packet, int len) {
-	int i, dont_ack=0;
+	int i, dont_ack = 0;
 	UsbCommand* c = (UsbCommand *)packet;
 	volatile uint32_t *p;
 
-	if(len != sizeof(UsbCommand)) Fatal();
+	//if ( len != sizeof(UsbCommand)) Fatal();
   
 	uint32_t arg0 = (uint32_t)c->arg[0];
   
@@ -122,7 +123,7 @@ void UsbPacketReceived(uint8_t *packet, int len) {
 				uint32_t flash_address = arg0 + (0x100*j);
         
 				/* Check that the address that we are supposed to write to is within our allowed region */
-				if( ((flash_address+AT91C_IFLASH_PAGE_SIZE-1) >= end_addr) || (flash_address < start_addr) ) {
+				if( ((flash_address + AT91C_IFLASH_PAGE_SIZE - 1) >= end_addr) || (flash_address < start_addr) ) {
 					/* Disallow write */
 					dont_ack = 1;
 					cmd_send(CMD_NACK,0,0,0,0,0);
@@ -150,7 +151,7 @@ void UsbPacketReceived(uint8_t *packet, int len) {
 		} break;
       
 		case CMD_START_FLASH: {
-			if(c->arg[2] == START_FLASH_MAGIC) 
+			if (c->arg[2] == START_FLASH_MAGIC) 
 				bootrom_unlocked = 1;
 			else 
 				bootrom_unlocked = 0;
@@ -182,48 +183,43 @@ void UsbPacketReceived(uint8_t *packet, int len) {
 		} break;
 	}
   
-	if(!dont_ack)
+	if (!dont_ack)
 		cmd_send(CMD_ACK,arg0,0,0,0,0);
 }
 
-static void flash_mode(int externally_entered)
-{
+static void flash_mode(int externally_entered) {
 	start_addr = 0;
 	end_addr = 0;
 	bootrom_unlocked = 0;
 	byte_t rx[sizeof(UsbCommand)];
-	size_t rx_len;
 
 	usb_enable();
+	
+	// wait for reset to be complete?
 	for (volatile size_t i=0; i<0x100000; i++) {};
 
 	for(;;) {
 		WDT_HIT();
-
-		if (usb_poll()) {
-			rx_len = usb_read(rx,sizeof(UsbCommand));
-			if (rx_len)
-				UsbPacketReceived(rx,rx_len);
-		}
-
-		if(!externally_entered && !BUTTON_PRESS()) {
+		
+		// Check if there is a usb packet available
+		if ( cmd_receive( (UsbCommand*)rx ) )
+			UsbPacketReceived(rx, sizeof(UsbCommand) );
+		
+		if (!externally_entered && !BUTTON_PRESS()) {
 			/* Perform a reset to leave flash mode */
 			usb_disable();
 			LED_B_ON();
 			AT91C_BASE_RSTC->RSTC_RCR = RST_CONTROL_KEY | AT91C_RSTC_PROCRST;
-			for(;;)
-				;
+			for(;;) {};
 		}
-		if(externally_entered && BUTTON_PRESS()) {
+		if (externally_entered && BUTTON_PRESS()) {
 			/* Let the user's button press override the automatic leave */
 			externally_entered = 0;
 		}
 	}
 }
 
-extern uint32_t _osimage_entry;
-void BootROM(void)
-{
+void BootROM(void) {
     //------------
     // First set up all the I/O pins; GPIOs configured directly, other ones
     // just need to be assigned to the appropriate peripheral.
@@ -265,41 +261,40 @@ void BootROM(void)
 		GPIO_LED_C			|
 		GPIO_LED_D;
 
-//    USB_D_PLUS_PULLUP_OFF();
+	// USB_D_PLUS_PULLUP_OFF();
 	usb_disable();
 	LED_D_OFF();
 	LED_C_ON();
 	LED_B_OFF();
 	LED_A_OFF();
 
-	AT91C_BASE_EFC0->EFC_FMR =
-		AT91C_MC_FWS_1FWS |
-		MC_FLASH_MODE_MASTER_CLK_IN_MHZ(48);
-#ifdef HAS_512_FLASH
-	AT91C_BASE_EFC1->EFC_FMR =
-		AT91C_MC_FWS_1FWS |
-		MC_FLASH_MODE_MASTER_CLK_IN_MHZ(48);
-#endif	
+	// Set the first 256kb memory flashspeed
+	AT91C_BASE_EFC0->EFC_FMR = AT91C_MC_FWS_1FWS | MC_FLASH_MODE_MASTER_CLK_IN_MHZ(48);
+
+	// 9 = 256, 10+ is 512kb
+	uint8_t id = ( *(AT91C_DBGU_CIDR) & 0xF00) >> 8;	
+	if ( id > 9 )
+		AT91C_BASE_EFC1->EFC_FMR = AT91C_MC_FWS_1FWS | MC_FLASH_MODE_MASTER_CLK_IN_MHZ(48);
+
     // Initialize all system clocks
     ConfigClocks();
 
     LED_A_ON();
 
     int common_area_present = 0;
-    switch(AT91C_BASE_RSTC->RSTC_RSR & AT91C_RSTC_RSTTYP) {
+    switch (AT91C_BASE_RSTC->RSTC_RSR & AT91C_RSTC_RSTTYP) {
     case AT91C_RSTC_RSTTYP_WATCHDOG:
     case AT91C_RSTC_RSTTYP_SOFTWARE:
     case AT91C_RSTC_RSTTYP_USER:
 	    /* In these cases the common_area in RAM should be ok, retain it if it's there */
-	    if(common_area.magic == COMMON_AREA_MAGIC && common_area.version == 1) {
+	    if(common_area.magic == COMMON_AREA_MAGIC && common_area.version == 1)
 		    common_area_present = 1;
-	    }
 	    break;
     default: /* Otherwise, initialize it from scratch */
 	    break;
     }
 
-    if(!common_area_present){
+    if (!common_area_present){
 	    /* Common area not ok, initialize it */
 	    int i; 
 		/* Makeshift memset, no need to drag util.c into this */
@@ -312,12 +307,12 @@ void BootROM(void)
     }
 
     common_area.flags.bootrom_present = 1;
-    if(common_area.command == COMMON_AREA_COMMAND_ENTER_FLASH_MODE) {
+    if (common_area.command == COMMON_AREA_COMMAND_ENTER_FLASH_MODE) {
 	    common_area.command = COMMON_AREA_COMMAND_NONE;
 	    flash_mode(1);
-    } else if(BUTTON_PRESS()) {
+    } else if (BUTTON_PRESS()) {
 	    flash_mode(0);
-    } else if(_osimage_entry == 0xffffffffU) {
+    } else if (_osimage_entry == 0xffffffffU) {
 	    flash_mode(1);
     } else {
 	    // jump to Flash address of the osimage entry point (LSBit set for thumb mode)

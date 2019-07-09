@@ -1,8 +1,4 @@
-#include "proxmark3.h"
-#include "apps.h"
-#include "lfsampling.h"
 #include "pcf7931.h"
-#include "string.h"
 
 #define T0_PCF 8 //period for the pcf7931 in us
 #define ALLOC 16
@@ -103,7 +99,7 @@ int DemodPCF7931(uint8_t **outBlocks) {
 				warnings++;
 				if (warnings > 10)
 				{
-					Dbprintf("Error: too many detection errors, aborting.");
+					Dbprintf("Error: too many detection errors, aborting...");
 					return 0;
 				}
 			}
@@ -394,7 +390,7 @@ void SendCmdPCF7931(uint32_t * tab){
 	FpgaSendCommand(FPGA_CMD_SET_DIVISOR, 95); //125Khz
 
 	FpgaWriteConfWord(FPGA_MAJOR_MODE_LF_PASSTHRU );
-
+	
 	LED_A_ON();
 
 	// steal this pin from the SSP and use it to control the modulation

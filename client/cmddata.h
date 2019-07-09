@@ -16,36 +16,45 @@
 #include <stdbool.h> //bool
 #include "cmdparser.h" // for command_t
 
-#define MAX_DEMOD_BUF_LEN (1024*128)
-#define BIGBUF_SIZE 40000
+#include <stdio.h>    // also included in util.h
+#include <string.h>   // also included in util.h
+#include <inttypes.h>
+#include <limits.h>   // for CmdNorm INT_MIN && INT_MAX
+#include "util.h"
+#include "cmdmain.h"
+#include "proxmark3.h"	// sendcommand
+#include "ui.h"       // for show graph controls
+#include "graph.h"    // for graph data
+#include "usb_cmd.h"  // already included in cmdmain.h and proxmark3.h
+#include "lfdemod.h"  // for demod code
+#include "crc.h"      // for pyramid checksum maxim
+#include "crc16.h"    // for FDXB demod checksum
+#include "loclass/cipherutils.h" // for decimating samples in getsamples
+#include "cmdlfem4x.h" // askem410xdecode
 
 command_t * CmdDataCommands();
 
 int CmdData(const char *Cmd);
 void printDemodBuff(void);
 void setDemodBuf(uint8_t *buff, size_t size, size_t startIdx);
-int CmdAskEM410xDemod(const char *Cmd);
-int CmdVikingDemod(const char *Cmd);
-int CmdG_Prox_II_Demod(const char *Cmd);
+bool getDemodBuf(uint8_t *buff, size_t *size);
+void save_restoreDB(uint8_t saveOpt);// option '1' to save DemodBuffer any other to restore
+int CmdPrintDemodBuff(const char *Cmd);
+
 int Cmdaskrawdemod(const char *Cmd);
 int Cmdaskmandemod(const char *Cmd);
-int AutoCorrelate(int window, bool SaveGrph, bool verbose);
+int AutoCorrelate(const int *in, int *out, size_t len, int window, bool SaveGrph, bool verbose);
+int CmdAskEdgeDetect(const char *Cmd);
 int CmdAutoCorr(const char *Cmd);
 int CmdBiphaseDecodeRaw(const char *Cmd);
 int CmdBitsamples(const char *Cmd);
 int CmdBuffClear(const char *Cmd);
 int CmdDec(const char *Cmd);
 int CmdDetectClockRate(const char *Cmd);
-int CmdFDXBdemodBI(const char *Cmd);
-int CmdFSKdemodAWID(const char *Cmd);
-int CmdFSKdemodHID(const char *Cmd);
-int CmdFSKdemodIO(const char *Cmd);
-int CmdFSKdemodParadox(const char *Cmd);
-int CmdFSKdemodPyramid(const char *Cmd);
 int CmdFSKrawdemod(const char *Cmd);
 int CmdPSK1rawDemod(const char *Cmd);
 int CmdPSK2rawDemod(const char *Cmd);
-int CmdPSKNexWatch(const char *Cmd);
+int CmdPSKIdteck(const char *Cmd);
 int CmdGrid(const char *Cmd);
 int CmdGetBitStream(const char *Cmd);
 int CmdHexsamples(const char *Cmd);
@@ -66,22 +75,26 @@ int CmdSave(const char *Cmd);
 int CmdScale(const char *Cmd);
 int CmdDirectionalThreshold(const char *Cmd);
 int CmdZerocrossings(const char *Cmd);
-int CmdIndalaDecode(const char *Cmd);
-int AskEm410xDecode(bool verbose, uint32_t *hi, uint64_t *lo );
-int AskEm410xDemod(const char *Cmd, uint32_t *hi, uint64_t *lo, bool verbose);
 int ASKbiphaseDemod(const char *Cmd, bool verbose);
 int ASKDemod(const char *Cmd, bool verbose, bool emSearch, uint8_t askType);
 int ASKDemod_ext(const char *Cmd, bool verbose, bool emSearch, uint8_t askType, bool *stCheck);
 int FSKrawDemod(const char *Cmd, bool verbose);
 int PSKDemod(const char *Cmd, bool verbose);
 int NRZrawDemod(const char *Cmd, bool verbose);
-void printEM410x(uint32_t hi, uint64_t id);
-int getSamples(const char *Cmd, bool silent);
+int getSamples(int n, bool silent);
+void setClockGrid(int clk, int offset);
+int directionalThreshold(const int* in, int *out, size_t len, int8_t up, int8_t down);
+extern int AskEdgeDetect(const int *in, int *out, int len, int threshold);
 
 int CmdDataIIR(const char *Cmd);
 
+#define MAX_DEMOD_BUF_LEN (1024*128)
+#define BIGBUF_SIZE 40000
 extern uint8_t DemodBuffer[MAX_DEMOD_BUF_LEN];
 extern size_t DemodBufferLen;
+
+extern int g_DemodClock;
+extern size_t g_DemodStartIdx;
 extern uint8_t g_debugMode;
 
 #endif

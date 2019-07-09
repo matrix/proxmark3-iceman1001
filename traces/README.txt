@@ -6,7 +6,7 @@ EM4102-3.pm3: credit card style card EM4102 tag (ID: 010872e14f)
 em4x05.pm3: ear tag FDX-B ISO-11784/5 (ID: 6DB0840800F80001 - Application Identifier:  8000, Country Code:  124 (Canada), National ID:  270601654)
 em4x50.pm3: credit card style card EM4x50 tag (ID: DE2A3F00)
 hid-proxCardII-05512-11432784-1.pm3: clamshell-style HID ProxCard II card
-indala-00002-12345678-1A: Indala credit-card style card
+indala-00002-12345678-1A.pm3: Indala credit-card style card
 homeagain.pm3: HomeAgain animal (cat) tag - ID 985121004515220
 homeagain1600.pm3: HomeAgain animal (cat) tag - ID 985121004515220
 keri.pm3: Keri PSK-3 Key Ring tag (back of tag: 1460 3411)
@@ -24,3 +24,5 @@ ioprox-XSF-01-BE-03011.pm3: IO Prox FSK RF/64 ID in name
 indala-504278295.pm3: PSK 26 bit indala
 AWID-15-259.pm3: AWID FSK RF/50 FC: 15 Card: 259 
 HID-weak-fob-11647.pm3: HID 32bit Prox Card#: 11647.  very weak tag/read but just readable.
+visa2000.pm3:  VISA2000 ASK/MAN RF/64, Card: 480518
+securakey-64169.pm3  Securakey Tag BitLen: 26, Card ID: 64169, FC: 0x35

@@ -10,33 +10,138 @@
 //-----------------------------------------------------------------------------
 
 #include "ui.h"
-double CursorScaleFactor;
-int PlotGridX, PlotGridY, PlotGridXdefault= 64, PlotGridYdefault= 64;
-int offline;
-int flushAfterWrite = 0;
-extern pthread_mutex_t print_lock;
 
+double CursorScaleFactor = 1;
+int PlotGridX=0, PlotGridY=0, PlotGridXdefault= 64, PlotGridYdefault= 64, CursorCPos= 0, CursorDPos= 0;
+int offline;
+int g_flushAfterWrite = 0;  //buzzy
+int GridOffset = 0;
+bool GridLocked = false;
+bool showDemod = true;
+
+pthread_mutex_t print_lock = PTHREAD_MUTEX_INITIALIZER;
 static char *logfilename = "proxmark3.log";
 
-void PrintAndLog(char *fmt, ...)
-{
+void PrintAndLogOptions(char *str[][2], size_t size, size_t space) {
+	char buff[2000] = "Options:\n";
+	char format[2000] = "";
+	size_t counts[2] = {0, 0};
+	for(int i = 0; i < size; i++)
+		for(int j = 0 ; j < 2 ; j++)
+			if(counts[j] < strlen(str[i][j]))
+			{
+				counts[j] = strlen(str[i][j]);
+			}
+	for(int i = 0; i < size; i++)
+    {
+		for(int j = 0; j < 2; j++)
+		{
+			if(j == 0)
+			    snprintf(format, sizeof(format), "%%%zus%%%zus", space, counts[j]);
+            else
+                snprintf(format, sizeof(format), "%%%zus%%-%zus", space, counts[j]);
+			snprintf(buff + strlen(buff), sizeof(buff) - strlen(buff), format, " ", str[i][j]);
+		}
+		if(i<size-1)
+			strncat(buff, "\n", sizeof(buff)-strlen(buff) -1);
+    }
+    PrintAndLogEx(NORMAL, "%s", buff);
+}
+void PrintAndLogEx(logLevel_t level, char *fmt, ...) {
+
+	// skip debug messages if client debugging is turned off i.e. 'DATA SETDEBUG 0' 
+	if (g_debugMode	== 0 && level == DEBUG)
+		return;
+	
+	char buffer[MAX_PRINT_BUFFER] = {0};
+	char buffer2[MAX_PRINT_BUFFER] = {0};
+	char prefix[20] = {0};
+	char *token = NULL;
+	int size = 0;
+						//   {NORMAL, SUCCESS, INFO, FAILED, WARNING, ERR, DEBUG}
+	static char *prefixes[7] = { "", "[+] ", "[=] ", "[-] ", "[!] ", "[!!] ", "[#] "};
+	
+	switch( level ) {
+		case FAILED:
+			strncpy(prefix,_RED_([-] ), sizeof(prefix)-1);
+			break;
+		case DEBUG:
+			strncpy(prefix,_BLUE_([#] ), sizeof(prefix)-1);			
+			break;
+		case SUCCESS: 
+			strncpy(prefix,_GREEN_([+] ), sizeof(prefix)-1);
+			break;
+		case WARNING:
+			strncpy(prefix,_CYAN_([!] ), sizeof(prefix)-1);
+			break;		
+		default:
+			strncpy(prefix, prefixes[level], sizeof(prefix)-1);
+			break;
+	}
+	
+	va_list args;
+	va_start(args, fmt);
+	vsnprintf(buffer, sizeof(buffer), fmt, args);
+	va_end(args);
+
+	// no prefixes for normal
+	if ( level == NORMAL ) {
+		PrintAndLog("%s", buffer);
+		return;
+	}
+	
+	if (strchr(buffer, '\n')) {
+
+		const char delim[2] = "\n";
+			
+		// line starts with newline
+		if (buffer[0] == '\n') 
+			PrintAndLog("");
+		
+		token = strtok(buffer, delim);
+		
+		while (token != NULL) {
+			
+			size = strlen(buffer2);
+		
+			if (strlen(token))
+				snprintf(buffer2+size, sizeof(buffer2)-size, "%s%s\n", prefix, token);
+			else
+				snprintf(buffer2+size, sizeof(buffer2)-size, "\n");
+			
+			token = strtok(NULL, delim);
+		}
+		PrintAndLog("%s", buffer2);
+	} else {
+		snprintf(buffer2, sizeof(buffer2), "%s%s", prefix, buffer);
+		PrintAndLog("%s", buffer2);
+	}
+}
+
+void PrintAndLog(char *fmt, ...) {
 	char *saved_line;
 	int saved_point;
 	va_list argptr, argptr2;
 	static FILE *logfile = NULL;
 	static int logging = 1;
-
-	// lock this section to avoid interlacing prints from different threats
+		
+	// lock this section to avoid interlacing prints from different threads
 	pthread_mutex_lock(&print_lock);
   
 	if (logging && !logfile) {
 		logfile = fopen(logfilename, "a");
 		if (!logfile) {
 			fprintf(stderr, "Can't open logfile, logging disabled!\n");
-			logging=0;
+			logging = 0;
 		}
 	}
-	
+
+ 
+// If there is an incoming message from the hardware (eg: lf hid read) in
+// the background (while the prompt is displayed and accepting user input),
+// stash the prompt and bring it back later.	
+#ifdef RL_STATE_READCMD
+	// We are using GNU readline. libedit (OSX) doesn't support this flag.
 	int need_hack = (rl_readline_state & RL_STATE_READCMD) > 0;
 
 	if (need_hack) {
@@ -46,6 +151,7 @@ void PrintAndLog(char *fmt, ...)
 		rl_replace_line("", 0);
 		rl_redisplay();
 	}
+#endif
 	
 	va_start(argptr, fmt);
 	va_copy(argptr2, argptr);
@@ -54,6 +160,8 @@ void PrintAndLog(char *fmt, ...)
 	va_end(argptr);
 	printf("\n");
 
+#ifdef RL_STATE_READCMD
+	// We are using GNU readline. libedit (OSX) doesn't support this flag.
 	if (need_hack) {
 		rl_restore_prompt();
 		rl_replace_line(saved_line, 0);
@@ -61,17 +169,18 @@ void PrintAndLog(char *fmt, ...)
 		rl_redisplay();
 		free(saved_line);
 	}
+#endif
 	
 	if (logging && logfile) {
 		vfprintf(logfile, fmt, argptr2);
-		fprintf(logfile,"\n");
+		fprintf(logfile, "\n");
 		fflush(logfile);
 	}
 	va_end(argptr2);
 
-	if (flushAfterWrite == 1) {
+	if (g_flushAfterWrite == 1)
 		fflush(NULL);
-	}
+
 	//release lock
 	pthread_mutex_unlock(&print_lock);  
 }
@@ -119,7 +228,7 @@ void iceIIR_Butterworth(int *data, const size_t len){
 					 
         // compute instantaneous frequency by looking at phase difference
         // between adjacent samples
-        float freq = cargf(x*conjf(x_prime));
+        float freq = cargf(x * conjf(x_prime));
         x_prime = x;    // retain this sample for next iteration
 
 		output[i] =(freq > 0) ? 127 : -127;
@@ -154,8 +263,7 @@ void iceSimple_Filter(int *data, const size_t len, uint8_t k){
 	}
 }
 
-float complex cexpf (float complex Z)
-{
+float complex cexpf (float complex Z) {
   float complex  Res;
   double rho = exp (__real__ Z);
   __real__ Res = rho * cosf(__imag__ Z);

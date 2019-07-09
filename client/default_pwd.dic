@@ -2,6 +2,18 @@
 # ref. http://www.proxmark.org/forum/viewtopic.php?id=2022
 51243648,
 000D8787,
+# ref. http://kazus.ru/forums/showpost.php?p=1045937&postcount=77
+05D73B9F,
+# ref. http://www.proxmark.org/forum/viewtopic.php?=
+89A69E60,
+# ref lock
+314159E0,
+# ref. http://www.proxmark.org/forum/viewtopic.php?pid=28115#p28115
+AA55BBBB,
+# ref.  http://www.proxmark.org/forum/viewtopic.php?pid=30379#p30379
+1C0B5848,
+# paxton bullit?
+575F4F4B,
 # Default pwd, simple:
 00000000,
 11111111,
@@ -24,6 +36,7 @@ b0b1b2b3,
 aabbccdd,
 bbccddee,
 ccddeeff,
+50415353,
 00000001,
 00000002,
 0000000a,
@@ -71,30 +84,18 @@ F0000000,
 AABBCCDD,
 BBCCDDEE,
 CCDDEEFF,
-0CB7E7FC,  //rfidler?
-FABADA11,  //china?
+0CB7E7FC, //rfidler?
+FABADA11, //china?
 # 20 most common len==8
-#12345678,
-#11111111,
-#88888888,
 87654321,
-#00000000,
 12341234,
 69696969,
 12121212,
-#11223344,
 12344321,
-#77777777,
-#99999999,
-#22222222,
-#55555555,
-#33333333,
-#44444444,
-#66666666,
 11112222,
 13131313,
 10041004,
-##
+#
 31415926, //pii
 abcd1234,
 20002000,

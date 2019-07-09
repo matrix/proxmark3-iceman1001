@@ -10,17 +10,17 @@ module hi_read_rx_xcorr(
     ssp_frame, ssp_din, ssp_dout, ssp_clk,
     cross_hi, cross_lo,
     dbg,
-    xcorr_is_848, snoop
+    xcorr_is_848, snoop, xcorr_quarter_freq
 );
     input pck0, ck_1356meg, ck_1356megb;
     output pwr_lo, pwr_hi, pwr_oe1, pwr_oe2, pwr_oe3, pwr_oe4;
     input [7:0] adc_d;
-    output adc_clk, ssp_frame, ssp_din;
+    output adc_clk;
     input ssp_dout;
-    output ssp_clk;
+    output ssp_frame, ssp_din, ssp_clk;
     input cross_hi, cross_lo;
     output dbg;
-    input xcorr_is_848, snoop;
+    input xcorr_is_848, snoop, xcorr_quarter_freq;
 
 // Carrier is steady on through this, unless we're snooping.
 assign pwr_hi = ck_1356megb & (~snoop);
@@ -28,11 +28,20 @@ assign pwr_oe1 = 1'b0;
 assign pwr_oe3 = 1'b0;
 assign pwr_oe4 = 1'b0;
 
-wire adc_clk = ck_1356megb;
-
-reg fc_div_2;
+reg [2:0] fc_div;
 always @(negedge ck_1356megb)
-    fc_div_2 <= fc_div_2 + 1;
+    fc_div <= fc_div + 1;
+
+(* clock_signal = "yes" *) reg adc_clk;				// sample frequency, always 16 * fc
+always @(ck_1356megb, xcorr_is_848, xcorr_quarter_freq, fc_div)
+	if (xcorr_is_848 & ~xcorr_quarter_freq)			// fc = 847.5 kHz, standard ISO14443B
+		adc_clk <= ck_1356megb;
+	else if (~xcorr_is_848 & ~xcorr_quarter_freq)	// fc = 423.75 kHz 
+		adc_clk <= fc_div[0];
+	else if (xcorr_is_848 & xcorr_quarter_freq)		// fc = 211.875 kHz
+		adc_clk <= fc_div[1];
+	else 											// fc = 105.9375 kHz
+		adc_clk <= fc_div[2];
 
 // When we're a reader, we just need to do the BPSK demod; but when we're an
 // eavesdropper, we also need to pick out the commands sent by the reader,
@@ -60,16 +69,24 @@ begin
     end
 end
 
-// Let us report a correlation every 4 subcarrier cycles, or 4*16 samples,
+// Let us report a correlation every 4 subcarrier cycles, or 4*16=64 samples,
 // so we need a 6-bit counter.
 reg [5:0] corr_i_cnt;
-// And a couple of registers in which to accumulate the correlations.
-// we would add at most 32 times adc_d, the result can be held in 13 bits. 
-// Need one additional bit because it can be negative as well
+
+// And a couple of registers in which to accumulate the correlations. Since
+// load modulation saturates the ADC we have to use a large enough register
+// 32 * 255 = 8160, which can be held in 13 bits. Add 1 bit for sign.
+//
+// The initial code assumed a phase shift of up to 25% and the accumulators were
+// 11 bits (32 * 255 * 0,25 = 2040), we will pack all bits exceeding 11 bits into
+// MSB. This prevents under/-overflows but preserves sensitivity on the lower end.
 reg signed [13:0] corr_i_accum;
 reg signed [13:0] corr_q_accum;
+
+// we will report maximum 8 significant bits
 reg signed [7:0] corr_i_out;
 reg signed [7:0] corr_q_out;
+
 // clock and frame signal for communication to ARM
 reg ssp_clk;
 reg ssp_frame;
@@ -77,7 +94,6 @@ reg ssp_frame;
 
 always @(negedge adc_clk)
 begin
-	if (xcorr_is_848 | fc_div_2)
 		corr_i_cnt <= corr_i_cnt + 1;
 end		
 		
@@ -90,19 +106,36 @@ begin
     // send out later over the SSP.
     if(corr_i_cnt == 6'd0)
     begin
-        if(snoop)
-			begin
-				// Send only 7 most significant bits of tag signal (signed), LSB is reader signal:
-				corr_i_out <= {corr_i_accum[13:7], after_hysteresis_prev_prev};
-				corr_q_out <= {corr_q_accum[13:7], after_hysteresis_prev};
-				after_hysteresis_prev_prev <= after_hysteresis;
-			end
+        // send 10 bits of tag signal, 4 MSBs are stuffed into 2 MSB
+        if(~corr_i_accum[13])
+            corr_i_out <= {corr_i_accum[13],
+                           corr_i_accum[12] | corr_i_accum[11] | corr_i_accum[10],
+                           corr_i_accum[12] | corr_i_accum[11] | corr_i_accum[9],
+                           corr_i_accum[8:4]};
         else
-			begin
-				// 8 most significant bits of tag signal
-				corr_i_out <= corr_i_accum[13:6];
-				corr_q_out <= corr_q_accum[13:6];
-			end
+            corr_i_out <= {corr_i_accum[13],
+                           corr_i_accum[12] & corr_i_accum[11] & corr_i_accum[10],
+                           corr_i_accum[12] & corr_i_accum[11] & corr_i_accum[9],
+                           corr_i_accum[8:4]};
+
+        if(~corr_q_accum[13])
+            corr_q_out <= {corr_q_accum[13],
+                           corr_q_accum[12] | corr_q_accum[11] | corr_q_accum[10],
+                           corr_q_accum[12] | corr_q_accum[11] | corr_q_accum[9],
+                           corr_q_accum[8:4]};
+        else
+            corr_q_out <= {corr_q_accum[13],
+                           corr_q_accum[12] & corr_q_accum[11] & corr_q_accum[10],
+                           corr_q_accum[12] & corr_q_accum[11] & corr_q_accum[9],
+                           corr_q_accum[8:4]};
+
+        if(snoop)
+        begin
+            // replace LSB with 1 bit reader signal
+            corr_i_out[0] <= after_hysteresis_prev_prev;
+            corr_q_out[0] <= after_hysteresis_prev;
+            after_hysteresis_prev_prev <= after_hysteresis;
+        end
 
         corr_i_accum <= adc_d;
         corr_q_accum <= adc_d;
@@ -137,7 +170,7 @@ begin
     begin
         ssp_clk <= 1'b1;
         // Don't shift if we just loaded new data, obviously.
-        if(corr_i_cnt != 7'd0)
+        if(corr_i_cnt != 6'd0)
         begin
             corr_i_out[7:0] <= {corr_i_out[6:0], corr_q_out[7]};
             corr_q_out[7:1] <= corr_q_out[6:0];

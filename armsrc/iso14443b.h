@@ -13,28 +13,36 @@
 #ifndef __ISO14443B_H
 #define __ISO14443B_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include "proxmark3.h"
+#include "common.h"  	// access to global variable: MF_DBGLEVEL
 #include "apps.h"
 #include "util.h"
 #include "string.h"
-#include "iso14443crc.h"
-#include "common.h"
+#include "crc16.h"
 #include "mifare.h"
 #include "protocols.h"
-#include "mifareutil.h"		// access to global variable: MF_DBGLEVEL
 
-extern void AppendCrc14443b(uint8_t *data, int len);
+#ifndef AddCrc14A
+# define	AddCrc14A(data, len)	compute_crc(CRC_14443_A, (data), (len), (data)+(len), (data)+(len)+1)
+#endif
 
-void SendRawCommand14443B_Ex(UsbCommand *c);
+#ifndef AddCrc14B
+# define	AddCrc14B(data, len)	compute_crc(CRC_14443_B, (data), (len), (data)+(len), (data)+(len)+1)
+#endif
 
-void iso14443b_setup();
-uint8_t iso14443b_apdu(uint8_t const *message, size_t message_length, uint8_t *response);
-uint8_t iso14443b_select_card(iso14b_card_select_t* card);
-uint8_t iso14443b_select_card_srx(iso14b_card_select_t* card);
+extern void SendRawCommand14443B_Ex(UsbCommand *c);
+extern void iso14443b_setup();
+extern uint8_t iso14443b_apdu(uint8_t const *message, size_t message_length, uint8_t *response);
+extern uint8_t iso14443b_select_card(iso14b_card_select_t* card);
+extern uint8_t iso14443b_select_card_srx(iso14b_card_select_t* card);
 
 // testfunctions
-void WaitForFpgaDelayQueueIsEmpty( uint16_t delay );
-void ClearFpgaShiftingRegisters(void);
+extern void WaitForFpgaDelayQueueIsEmpty( uint16_t delay );
+extern void ClearFpgaShiftingRegisters(void);
 
 // States for 14B SIM command
 #define SIM_NOFIELD		0
@@ -44,5 +52,9 @@ void ClearFpgaShiftingRegisters(void);
 #define SIM_HALTING		4
 #define SIM_ACKNOWLEDGE 5
 #define SIM_WORK		6
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* __ISO14443B_H */

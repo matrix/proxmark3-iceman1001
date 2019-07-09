@@ -7,41 +7,10 @@
 //-----------------------------------------------------------------------------
 // Utility functions used in many places, not specific to any piece of code.
 //-----------------------------------------------------------------------------
-
 #include "util.h"
-
-void print_result(char *name, uint8_t *buf, size_t len) {
-	uint8_t *p = buf;
-
-	if ( len % 16 == 0 ) {
-		for(; p-buf < len; p += 16)
-			Dbprintf("[%s:%d/%d] %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
-				name,
-				p-buf,
-				len,
-				p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7],p[8], p[9], p[10], p[11], p[12], p[13], p[14], p[15]
-			);
-	}
-	else {
-		for(; p-buf < len; p += 8)
-			Dbprintf("[%s:%d/%d] %02x %02x %02x %02x %02x %02x %02x %02x",
-				name,
-				p-buf,
-				len,
-				p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]);
-	}
-}
 
 size_t nbytes(size_t nbits) {
 	return (nbits >> 3)+((nbits % 8) > 0);
-}
-
-uint32_t SwapBits(uint32_t value, int nrbits) {
-	uint32_t newvalue = 0;
-	for(int i = 0; i < nrbits; i++) {
-		newvalue ^= ((value >> i) & 1) << (nrbits - 1 - i);
-	}
-	return newvalue;
 }
 
 /*
@@ -56,9 +25,34 @@ uint32_t reflect(uint32_t v, int b) {
 			v |=  BITMASK((b-1)-i);
 		else
 			v &= ~BITMASK((b-1)-i);
-		t >>= 1;
+		t>>=1;
 	}
 	return v;
+}
+
+uint8_t reflect8(uint8_t b) {
+	return ((b * 0x80200802ULL) & 0x0884422110ULL) * 0x0101010101ULL >> 32;
+}
+uint16_t reflect16(uint16_t b) {
+    uint16_t v = 0;
+    v |= (b & 0x8000) >> 15; 
+    v |= (b & 0x4000) >> 13;
+    v |= (b & 0x2000) >> 11;
+    v |= (b & 0x1000) >> 9;
+    v |= (b & 0x0800) >> 7;
+    v |= (b & 0x0400) >> 5;
+    v |= (b & 0x0200) >> 3;
+    v |= (b & 0x0100) >> 1;
+
+    v |= (b & 0x0080) << 1;
+    v |= (b & 0x0040) << 3;
+    v |= (b & 0x0020) << 5;
+    v |= (b & 0x0010) << 7;
+    v |= (b & 0x0008) << 9;
+    v |= (b & 0x0004) << 11;
+    v |= (b & 0x0002) << 13;
+    v |= (b & 0x0001) << 15;
+    return v;
 }
 
 void num_to_bytes(uint64_t n, size_t len, uint8_t* dest) {
@@ -95,6 +89,36 @@ void lsl (uint8_t *data, size_t len) {
 
 int32_t le24toh (uint8_t data[3]) {
     return (data[2] << 16) | (data[1] << 8) | data[0];
+}
+
+//convert hex digit to integer
+uint8_t hex2int(char hexchar){
+    switch(hexchar){
+        case '0': return 0; break;
+        case '1': return 1; break;
+        case '2': return 2; break;
+        case '3': return 3; break;
+        case '4': return 4; break;
+        case '5': return 5; break;
+        case '6': return 6; break;
+        case '7': return 7; break;
+        case '8': return 8; break;
+        case '9': return 9; break;
+        case 'a':
+        case 'A': return 10; break;
+        case 'b':
+		case 'B': return 11; break;
+        case 'c':
+        case 'C': return 12; break;
+        case 'd':
+		case 'D': return 13; break;
+        case 'e':
+        case 'E': return 14; break;
+        case 'f':
+        case 'F': return 15; break;
+        default:
+            return 0;
+    }
 }
 
 void LEDsoff() {
@@ -242,23 +266,23 @@ void FormatVersionInformation(char *dst, int len, const char *prefix, void *vers
 	struct version_information *v = (struct version_information*)version_information;
 	dst[0] = 0;
 	strncat(dst, prefix, len-1);
-	if(v->magic != VERSION_INFORMATION_MAGIC) {
+	if (v->magic != VERSION_INFORMATION_MAGIC) {
 		strncat(dst, "Missing/Invalid version information\n", len - strlen(dst) - 1);
 		return;
 	}
-	if(v->versionversion != 1) {
+	if (v->versionversion != 1) {
 		strncat(dst, "Version information not understood\n", len - strlen(dst) - 1);
 		return;
 	}
-	if(!v->present) {
+	if (!v->present) {
 		strncat(dst, "Version information not available\n", len - strlen(dst) - 1);
 		return;
 	}
 
 	strncat(dst, v->gitversion, len - strlen(dst) - 1);
-	if(v->clean == 0) {
+	if (v->clean == 0) {
 		strncat(dst, "-unclean", len - strlen(dst) - 1);
-	} else if(v->clean == 2) {
+	} else if (v->clean == 2) {
 		strncat(dst, "-suspect", len - strlen(dst) - 1);
 	}
 

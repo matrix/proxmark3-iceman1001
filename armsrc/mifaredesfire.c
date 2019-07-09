@@ -1,5 +1,4 @@
 #include "mifaredesfire.h"
-#include "BigBuf.h"
 
 #define MAX_APPLICATION_COUNT 28
 #define MAX_FILE_COUNT 16
@@ -22,9 +21,9 @@ bool InitDesfireCard(){
 	iso14a_card_select_t card;
 	
 	iso14443a_setup(FPGA_HF_ISO14443A_READER_LISTEN);
-	set_tracing(TRUE);
+	set_tracing(true);
 
-	if (!iso14443a_select_card(NULL, &card, NULL, true, 0)) {
+	if (!iso14443a_select_card(NULL, &card, NULL, true, 0, false)) {
 		if (MF_DBGLEVEL >= MF_DBG_ERROR) DbpString("Can't select card");
 		OnError(1);
 		return false;
@@ -102,16 +101,22 @@ void MifareDesfireGetInformation(){
 		CID == 0x00 first card?		
 	*/
 	clear_trace();
-	set_tracing(TRUE);
+	set_tracing(true);
 	iso14443a_setup(FPGA_HF_ISO14443A_READER_LISTEN);
 
 	// card select - information
-	if ( !iso14443a_select_card(NULL, &card, NULL, true, 0) ) {
+	if ( !iso14443a_select_card(NULL, &card, NULL, true, 0, false) ) {
 		if (MF_DBGLEVEL >= MF_DBG_ERROR) DbpString("Can't select card");
 		OnError(1);
 		return;
 	}
-
+	
+	if ( card.uidlen != 7 ) {
+		if (MF_DBGLEVEL >= MF_DBG_ERROR) Dbprintf("Wrong UID size. Expected 7byte got %d", card.uidlen);
+		OnError(2);
+		return;		
+	}
+		
 	memcpy(dataout, card.uid, 7);
 
 	LED_A_ON();
@@ -124,7 +129,7 @@ void MifareDesfireGetInformation(){
 	len =  DesfireAPDU(cmd, cmd_len, resp);
 	if ( !len ) {
 		print_result("ERROR <--: ", resp, len);	
-		OnError(2);
+		OnError(3);
 		return;
 	}
 	
@@ -137,7 +142,7 @@ void MifareDesfireGetInformation(){
 	len =  DesfireAPDU(cmd, cmd_len, resp);
 	if ( !len ) {
 		print_result("ERROR <--: ", resp, len);	
-		OnError(2);
+		OnError(3);
 		return;
 	}	
 	
@@ -149,7 +154,7 @@ void MifareDesfireGetInformation(){
 	len =  DesfireAPDU(cmd, cmd_len, resp);
 	if ( !len ) {
 		print_result("ERROR <--: ", resp, len);	
-		OnError(2);
+		OnError(3);
 		return;
 	}
 	
@@ -238,7 +243,7 @@ void MifareDES_Auth1(uint8_t mode, uint8_t algo, uint8_t keyno,  uint8_t *datain
             
             if ( resp[2] == 0xaf ){
             } else {
-                DbpString("Authetication failed. Invalid key number.");
+                DbpString("Authentication failed. Invalid key number.");
                 OnError(3);
                 return;
             }
@@ -305,7 +310,7 @@ void MifareDES_Auth1(uint8_t mode, uint8_t algo, uint8_t keyno,  uint8_t *datain
                 rol(decRndA,8);
                 for (int x = 0; x < 8; x++) {
                     if (decRndA[x] != encRndA[x]) {
-                        DbpString("Authetication failed. Cannot varify PICC.");
+                        DbpString("Authentication failed. Cannot varify PICC.");
                         OnError(4);
                         return;
                     }
@@ -329,7 +334,7 @@ void MifareDES_Auth1(uint8_t mode, uint8_t algo, uint8_t keyno,  uint8_t *datain
                 memcpy(buff1,newKey, 8);
                 memcpy(buff2,newKey + 8, 8);
                 
-                ComputeCrc14443(CRC_14443_A, newKey, 16, &first, &second);
+                compute_crc(CRC_14443_A, newKey, 16, &first, &second);
                 memcpy(buff3, &first, 1);
                 memcpy(buff3 + 1, &second, 1);
                 
@@ -371,7 +376,7 @@ void MifareDES_Auth1(uint8_t mode, uint8_t algo, uint8_t keyno,  uint8_t *datain
                         memcpy(buff1,newKey, 8);
                         memcpy(buff2,newKey + 8, 8);
                         
-                        ComputeCrc14443(CRC_14443_A, newKey, 16, &first, &second);
+                        compute_crc(CRC_14443_A, newKey, 16, &first, &second);
                         memcpy(buff3, &first, 1);
                         memcpy(buff3 + 1, &second, 1);
                         
@@ -406,7 +411,7 @@ void MifareDES_Auth1(uint8_t mode, uint8_t algo, uint8_t keyno,  uint8_t *datain
                 else if (algo == 1)
                 cmd_send(CMD_ACK,1,0,0,skey->data,8);
             } else {
-                DbpString("Authetication failed.");
+                DbpString("Authentication failed.");
                 OnError(6);
                 return;
             }
@@ -432,7 +437,7 @@ void MifareDES_Auth1(uint8_t mode, uint8_t algo, uint8_t keyno,  uint8_t *datain
 			AesCtx ctx;
 			if ( AesCtxIni(&ctx, IV, key->data, KEY128, CBC) < 0 ){
 				if( MF_DBGLEVEL >= 4) {
-					Dbprintf("AES context failed to init");
+					DbpString("AES context failed to init");
 				}
 				OnError(7);
 				return;
@@ -477,7 +482,7 @@ void MifareDES_Auth1(uint8_t mode, uint8_t algo, uint8_t keyno,  uint8_t *datain
 				Desfire_session_key_new( nonce, decRndB , key, skey );
 				print_result("SESSION : ", skey->data, 16);
 			} else {
-				DbpString("Authetication failed.");
+				DbpString("Authentication failed.");
 				OnError(7);
 				return;
 			}
@@ -512,7 +517,7 @@ int DesfireAPDU(uint8_t *cmd, size_t cmd_len, uint8_t *dataout){
 	len = ReaderReceive(resp, par);
 	if ( !len ) {
 		if (MF_DBGLEVEL >= 4) Dbprintf("fukked");
-		return FALSE; //DATA LINK ERROR
+		return false; //DATA LINK ERROR
 	}
 	// if we received an I- or R(ACK)-Block with a block number equal to the
 	// current block number, toggle the current block number
@@ -541,7 +546,7 @@ size_t CreateAPDU( uint8_t *datain, size_t len, uint8_t *dataout){
 	cmd[1] = 0x00;  //  CID: 0x00 //TODO: allow multiple selected cards
 	
 	memcpy(cmd+2, datain, len);
-	AppendCrc14443a(cmd, len+2);
+	AddCrc14A(cmd, len+2);
 	
 	memcpy(dataout, cmd, cmdlen);
 	
@@ -557,9 +562,7 @@ void OnSuccess(){
 	pcb_blocknum = 0;
 	ReaderTransmit(deselect_cmd, 3 , NULL);
 	mifare_ultra_halt();
-	FpgaWriteConfWord(FPGA_MAJOR_MODE_OFF);
-	LEDsoff();
-	set_tracing(FALSE);	
+	switch_off(); 
 }
 
 void OnError(uint8_t reason){

@@ -29,7 +29,7 @@ GZIP=gzip
 
 OBJDIR	= obj
 
-INCLUDE = -I../include -I../common
+INCLUDE = -I../include -I../common -I.
 
 TAR=tar
 TARFLAGS = -C .. -rvf
@@ -59,22 +59,19 @@ DETECTED_OS=Windows
 
 endif
 
-APP_CFLAGS += -DHAS_512_FLASH
-
 # Also search prerequisites in the common directory (for usb.c), the fpga directory (for fpga.bit), and the zlib directory
-VPATH = . ../common ../fpga ../zlib
+VPATH = . ../common ../common/crapto1 ../common/polarssl ../fpga ../zlib ../armsrc/Standalone ../uart
 
 INCLUDES = ../include/proxmark3.h ../include/at91sam7s512.h ../include/config_gpio.h ../include/usb_cmd.h $(APP_INCLUDES)
 
 CFLAGS =  -c $(INCLUDE) -Wall -Werror -pedantic -Wunused -std=c99 $(APP_CFLAGS) -Os
 LDFLAGS = -nostartfiles -nodefaultlibs -Wl,-gc-sections -n
-
 LIBS = -lgcc
 
 THUMBOBJ = $(patsubst %.c,$(OBJDIR)/%.o,$(notdir $(THUMBSRC)))
 ARMOBJ   = $(patsubst %.c,$(OBJDIR)/%.o,$(notdir $(ARMSRC)))
 ASMOBJ   = $(patsubst %.s,$(OBJDIR)/%.o,$(notdir $(ASMSRC)))
-VERSIONOBJ = $(OBJDIR)/version.o
+VERSIONOBJ = $(patsubst %.c,$(OBJDIR)/%.o,$(notdir $(VERSIONSRC)))
 
 $(THUMBOBJ): $(OBJDIR)/%.o: %.c $(INCLUDES)
 	$(CC) $(CFLAGS) -mthumb -mthumb-interwork -o $@ $< 
@@ -93,16 +90,14 @@ $(VERSIONOBJ): $(OBJDIR)/%.o: %.c $(INCLUDES)
 # See ldscript.common. -- Henryk Plötz <henryk@ploetzli.ch> 2009-08-27
 OBJCOPY_TRANSLATIONS = --no-change-warnings \
 	--change-addresses -0x100000 --change-start 0 \
-	--change-section-address .bss+0 --change-section-address .data+0 \
+	--change-section-address .bss+0 --change-section-address .data-0x100000 \
 	--change-section-address .commonarea+0
 $(OBJDIR)/%.s19: $(OBJDIR)/%.elf
 	$(OBJCOPY) -Osrec --srec-forceS3 --strip-debug $(OBJCOPY_TRANSLATIONS) $^ $@
 
-# version.c should be remade on every compilation
-.PHONY: version.c
-version.c: default_version.c
-	perl ../tools/mkversion.pl .. > $@ || $(COPY) $^ $@ 
-
+# easy printing of MAKE VARIABLES
+print-%: ; @echo $* = $($*) 
+	
 # Automatic dependency generation
 DEPENDENCY_FILES = $(patsubst %.c,$(OBJDIR)/%.d,$(notdir $(THUMBSRC))) \
 	$(patsubst %.c,$(OBJDIR)/%.d,$(notdir $(ARMSRC))) \

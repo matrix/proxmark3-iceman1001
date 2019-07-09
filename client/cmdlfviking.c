@@ -4,44 +4,36 @@
 // at your option, any later version. See the LICENSE.txt file for the text of
 // the license.
 //-----------------------------------------------------------------------------
-// Low frequency Viking tag commands
+// Low frequency Viking tag commands (AKA FDI Matalec Transit)
+// ASK/Manchester, RF/32, 64 bits (complete)
 //-----------------------------------------------------------------------------
-#include <stdio.h>
-#include <string.h>
-#include <inttypes.h>
-#include "proxmark3.h"
-#include "ui.h"
-#include "util.h"
-#include "graph.h"
-#include "cmdparser.h"
-#include "cmddata.h"
-#include "cmdmain.h"
-#include "cmdlf.h"
 #include "cmdlfviking.h"
-#include "lfdemod.h"
+
 static int CmdHelp(const char *Cmd);
 
-int usage_lf_viking_clone(void){
-	PrintAndLog("clone a Viking AM tag to a T55x7 tag.");
-	PrintAndLog("Usage: lf viking clone <Card ID - 8 hex digits> <Q5>");
-	PrintAndLog("Options :");
-	PrintAndLog("  <Card Number>  : 8 digit hex viking card number");
-	PrintAndLog("  <Q5>           : specify write to Q5 (t5555 instead of t55x7)");
-	PrintAndLog("");
-	PrintAndLog("Sample  : lf viking clone 1A337 Q5");
+int usage_lf_viking_clone(void) {
+	PrintAndLogEx(NORMAL, "clone a Viking AM tag to a T55x7 tag.");
+	PrintAndLogEx(NORMAL, "Usage: lf viking clone <Card ID - 8 hex digits> <Q5>");
+	PrintAndLogEx(NORMAL, "Options:");
+	PrintAndLogEx(NORMAL, "  <Card Number>  : 8 digit hex viking card number");
+	PrintAndLogEx(NORMAL, "  <Q5>           : specify write to Q5 (t5555 instead of t55x7)");
+	PrintAndLogEx(NORMAL, "");
+	PrintAndLogEx(NORMAL, "Examples:");
+	PrintAndLogEx(NORMAL, "       lf viking clone 1A337 Q5");
 	return 0;
 }
 
 int usage_lf_viking_sim(void) {
-	PrintAndLog("Enables simulation of viking card with specified card number.");
-	PrintAndLog("Simulation runs until the button is pressed or another USB command is issued.");
-	PrintAndLog("Per viking format, the card number is 8 digit hex number.  Larger values are truncated.");
-	PrintAndLog("");
-	PrintAndLog("Usage:  lf viking sim <Card-Number>");
-	PrintAndLog("Options :");
-	PrintAndLog("  <Card Number>   : 8 digit hex viking card number");
-	PrintAndLog("");
-	PrintAndLog("Sample  : lf viking sim 1A337");
+	PrintAndLogEx(NORMAL, "Enables simulation of viking card with specified card number.");
+	PrintAndLogEx(NORMAL, "Simulation runs until the button is pressed or another USB command is issued.");
+	PrintAndLogEx(NORMAL, "Per viking format, the card number is 8 digit hex number.  Larger values are truncated.");
+	PrintAndLogEx(NORMAL, "");
+	PrintAndLogEx(NORMAL, "Usage:  lf viking sim <Card-Number>");
+	PrintAndLogEx(NORMAL, "Options:");
+	PrintAndLogEx(NORMAL, "  <Card Number>   : 8 digit hex viking card number");
+	PrintAndLogEx(NORMAL, "");
+	PrintAndLogEx(NORMAL, "Examples:");
+	PrintAndLogEx(NORMAL, "       lf viking sim 1A337");
 	return 0;
 }
 
@@ -53,15 +45,60 @@ uint64_t getVikingBits(uint32_t id) {
 	ret	|= checksum;
 	return ret;
 }
+// by marshmellow
+// find viking preamble 0xF200 in already demoded data
+int detectViking(uint8_t *dest, size_t *size) {
+	//make sure buffer has data
+	if (*size < 64*2) return -2;
+	size_t startIdx = 0;
+	uint8_t preamble[] = {1,1,1,1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+	if (!preambleSearch(dest, preamble, sizeof(preamble), size, &startIdx)) 
+		return -4; //preamble not found
+	
+	uint32_t checkCalc = bytebits_to_byte(dest+startIdx,8) ^ 
+						 bytebits_to_byte(dest+startIdx+8,8) ^ 
+						 bytebits_to_byte(dest+startIdx+16,8) ^ 
+						 bytebits_to_byte(dest+startIdx+24,8) ^ 
+						 bytebits_to_byte(dest+startIdx+32,8) ^ 
+						 bytebits_to_byte(dest+startIdx+40,8) ^ 
+						 bytebits_to_byte(dest+startIdx+48,8) ^ 
+						 bytebits_to_byte(dest+startIdx+56,8);
+	if ( checkCalc != 0xA8 ) return -5;	
+	if (*size != 64) return -6;
+	//return start position
+	return (int)startIdx;
+}
+
+//by marshmellow
+//see ASKDemod for what args are accepted
+int CmdVikingDemod(const char *Cmd) {
+	if (!ASKDemod(Cmd, false, false, 1)) {
+		PrintAndLogEx(DEBUG, "DEBUG: Error - Viking ASKDemod failed");
+		return 0;
+	}
+	size_t size = DemodBufferLen;
+
+	int ans = detectViking(DemodBuffer, &size);
+	if (ans < 0) {
+		PrintAndLogEx(DEBUG, "DEBUG: Error - Viking Demod %d %s", ans, (ans == -5)?"[chksum error]":"");
+		return 0;
+	}
+	//got a good demod
+	uint32_t raw1 = bytebits_to_byte(DemodBuffer+ans, 32);
+	uint32_t raw2 = bytebits_to_byte(DemodBuffer+ans+32, 32);
+	uint32_t cardid = bytebits_to_byte(DemodBuffer+ans+24, 32);
+	uint8_t  checksum = bytebits_to_byte(DemodBuffer+ans+32+24, 8);
+	PrintAndLogEx(SUCCESS, "Viking Tag Found: Card ID %08X, Checksum: %02X", cardid, checksum);
+	PrintAndLogEx(SUCCESS, "Raw: %08X%08X", raw1,raw2);
+	setDemodBuf(DemodBuffer, 64, ans);
+	setClockGrid(g_DemodClock, g_DemodStartIdx + (ans*g_DemodClock));
+	return 1;
+}
 
 //by marshmellow
 //see ASKDemod for what args are accepted
 int CmdVikingRead(const char *Cmd) {
-	// read lf silently
-	CmdLFRead("s");
-	// get samples silently
-	getSamples("30000",false);
-	// demod and output viking ID	
+	lf_read(true, 10000);
 	return CmdVikingDemod(Cmd);
 }
 
@@ -81,12 +118,16 @@ int CmdVikingClone(const char *Cmd) {
 
 	rawID = getVikingBits(id);
 	
-	PrintAndLog("Cloning - ID: %08X, Raw: %08X%08X",id,(uint32_t)(rawID >> 32),(uint32_t) (rawID & 0xFFFFFFFF));
-	UsbCommand c = {CMD_VIKING_CLONE_TAG,{rawID >> 32, rawID & 0xFFFFFFFF, Q5}};
+	PrintAndLogEx(NORMAL, "Cloning - ID: %08X, Raw: %08X%08X",id,(uint32_t)(rawID >> 32),(uint32_t) (rawID & 0xFFFFFFFF));
+	
+	UsbCommand c = {CMD_VIKING_CLONE_TAG, {rawID >> 32, rawID & 0xFFFFFFFF, Q5}};
 	clearCommandBuffer();
     SendCommand(&c);
-	//check for ACK
-	WaitForResponse(CMD_ACK,NULL);
+	UsbCommand resp;
+	if (!WaitForResponseTimeout(CMD_ACK, &resp, T55XX_WRITE_TIMEOUT)){
+		PrintAndLogEx(WARNING, "Error occurred, device did not respond during write operation.");
+		return -1;
+	}
     return 0;
 }
 
@@ -108,7 +149,7 @@ int CmdVikingSim(const char *Cmd) {
 	arg1 = clk << 8 | encoding;
 	arg2 = invert << 8 | separator;
 
-	PrintAndLog("Simulating - ID: %08X, Raw: %08X%08X",id,(uint32_t)(rawID >> 32),(uint32_t) (rawID & 0xFFFFFFFF));
+	PrintAndLogEx(NORMAL, "Simulating Viking - ID: %08X, Raw: %08X%08X",id,(uint32_t)(rawID >> 32),(uint32_t) (rawID & 0xFFFFFFFF));
 	
 	UsbCommand c = {CMD_ASK_SIM_TAG, {arg1, arg2, size}};
 	num_to_bytebits(rawID, size, c.d.asBytes);
@@ -119,7 +160,8 @@ int CmdVikingSim(const char *Cmd) {
 
 static command_t CommandTable[] = {
     {"help",	CmdHelp,		1, "This help"},
-	{"read",	CmdVikingRead,  0, "Attempt to read and Extract tag data"},
+	{"demod",	CmdVikingDemod, 1, "Demodulate a Viking tag from the GraphBuffer"},
+	{"read",	CmdVikingRead,  0, "Attempt to read and Extract tag data from the antenna"},
 	{"clone",	CmdVikingClone, 0, "<8 digit ID number> clone viking tag"},
 	{"sim",		CmdVikingSim,   0, "<8 digit ID number> simulate viking tag"},
     {NULL, NULL, 0, NULL}

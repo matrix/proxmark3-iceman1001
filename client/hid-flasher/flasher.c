@@ -9,7 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "sleep.h"
+#include "util_posix.h"
 #include "proxusb.h"
 #include "flash.h"
 
@@ -59,8 +59,8 @@ int main(int argc, char **argv)
 
 	fprintf(stderr, "Waiting for Proxmark to appear on USB...");
 	while (!OpenProxmark(1)) {
-		sleep(1);
-		fprintf(stderr, ".");
+		msleep(1000);
+		fprintf(stderr, "."); fflush(stdout);
 	}
 	fprintf(stderr, " Found.\n");
 

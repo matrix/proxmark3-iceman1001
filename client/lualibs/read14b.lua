@@ -2,7 +2,7 @@
 	This is a library to read 14443b tags. It can be used something like this
 
 	local reader = require('read14b')
-	result, err = reader.select1443b()
+	result, err = reader.select14443b()
 	if not result then
 		print(err)
 		return
@@ -25,7 +25,7 @@ local ISO14B_COMMAND = {
 	ISO14B_SELECT_SR = 0x80,
 }
 
-local function parse1443b(data)
+local function parse14443b(data)
 	--[[
 	
 	Based on this struct : 
@@ -101,7 +101,7 @@ local function read14443b(disconnect)
 		local count,cmd,arg0,arg1,arg2 = bin.unpack('LLLL',result)
 		if arg0 == 0 then 
 			data = string.sub(result, count)
-			info, err = parse1443b(data)
+			info, err = parse14443b(data)
 		else
 			err = "iso14443b card select failed"
 		end
@@ -147,8 +147,11 @@ local function waitFor14443b()
 end
 
 local library = {
-	parse1443b  = parse1443b,
-	read1443b 	= read14443b,
+	parse14443b = parse14443b,
+	parse1443b = parse14443b,
+	read = read14443b,
+	read14443b = read14443b,
+	read1443b = read14443b,
 	waitFor14443b = waitFor14443b,
 	sendToDevice = sendToDevice,
 	showData = showData,

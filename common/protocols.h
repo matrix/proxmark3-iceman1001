@@ -1,6 +1,11 @@
 #ifndef PROTOCOLS_H
 #define PROTOCOLS_H
 
+#include <string.h>
+#include <stdint.h>
+#include <stdarg.h>
+
+
 //The following data is taken from http://www.proxmark.org/forum/viewtopic.php?pid=13501#p13501
 /*
 ISO14443A (usually NFC tags)
@@ -114,19 +119,26 @@ ISO 7816-4 Basic interindustry commands. For command APDU's.
 	90 00 = OK
 	6x xx = ERROR
 */
-
-#define ICLASS_CMD_ACTALL           0x0A
-#define ICLASS_CMD_READ_OR_IDENTIFY 0x0C
-#define ICLASS_CMD_SELECT           0x81
-#define ICLASS_CMD_PAGESEL          0x84
-#define ICLASS_CMD_READCHECK_KD     0x88
-#define ICLASS_CMD_READCHECK_KC     0x18
-#define ICLASS_CMD_CHECK            0x05
-#define ICLASS_CMD_DETECT           0x0F
+// these cmds are adjusted to ISO15693 and Manchester encoding requests.
+// for instance ICLASS_CMD_SELECT  0x81 tells if ISO14443b/BPSK coding/106 kbits/s
+// for instance ICLASS_CMD_SELECT  0x41 tells if ISO14443b/BPSK coding/423 kbits/s
+//
 #define ICLASS_CMD_HALT             0x00
-#define ICLASS_CMD_UPDATE			0x87
-#define ICLASS_CMD_ACT              0x8E
+#define ICLASS_CMD_SELECT_15        0x01
+#define ICLASS_CMD_ACTALL           0x0A
+#define ICLASS_CMD_DETECT           0x0F
+
+#define ICLASS_CMD_CHECK            0x05
 #define ICLASS_CMD_READ4            0x06
+#define ICLASS_CMD_READ_OR_IDENTIFY 0x0C
+
+#define ICLASS_CMD_SELECT           0x81   
+#define ICLASS_CMD_PAGESEL          0x84
+#define ICLASS_CMD_UPDATE			0x87
+#define ICLASS_CMD_READCHECK_KC     0x18
+#define ICLASS_CMD_READCHECK_KD     0x88
+#define ICLASS_CMD_ACT              0x8E
+
 
 
 #define ISO14443A_CMD_REQA       0x26
@@ -166,11 +178,17 @@ ISO 7816-4 Basic interindustry commands. For command APDU's.
 #define MIFARE_ULEV1_CHECKTEAR	0x3E
 #define MIFARE_ULEV1_VCSL		0x4B
 
+// New Mifare UL Nano commands.  Ref:: (https://www.nxp.com/docs/en/data-sheet/MF0UN_H_00.pdf)
+#define MIFARE_ULNANO_WRITESIG	0xA9
+#define MIFARE_ULNANO_LOCKSIF	0xAC
+
 // mifare 4bit card answers
 #define CARD_ACK      0x0A  // 1010 - ACK
+#define CARD_NACK_IV  0x00	// 0000 - NACK, invalid argument (invalid page address)
+#define CARD_NACK_PA  0x01	// 0001 - NACK, parity / crc error
 #define CARD_NACK_NA  0x04  // 0100 - NACK, not allowed (command not allowed)
 #define CARD_NACK_TR  0x05  // 0101 - NACK, transmission error
-
+#define CARD_NACK_EE  0x07	// 0111 - NACK, EEPROM write error
 
 // Magic Generation 1, parameter "work flags"
 // bit 0 - need get UID
@@ -246,14 +264,17 @@ ISO 7816-4 Basic interindustry commands. For command APDU's.
 #define TOPAZ_WRITE_NE8					0x1B	// Write-no-erase (eight bytes)
 
 
-// Definetions of which protocol annotations there are available
-#define ISO_14443A	0
-#define ICLASS		1
-#define ISO_14443B	2
-#define TOPAZ		3
-#define ISO_7816_4  4
-#define MFDES		5
-#define LEGIC		6
+// Definitions of which protocol annotations there are available
+#define ISO_14443A	 0
+#define ICLASS		 1
+#define ISO_14443B	 2
+#define TOPAZ		 3
+#define ISO_7816_4   4
+#define MFDES		 5
+#define LEGIC		 6
+#define ISO_15693	 7
+#define FELICA		 8
+#define PROTO_MIFARE 9
 
 //-- Picopass fuses
 #define FUSE_FPERS   0x80
@@ -357,6 +378,7 @@ void getMemConfig(uint8_t mem_cfg, uint8_t chip_cfg, uint8_t *max_blk, uint8_t *
 #define T55x7_MODULATION_MANCHESTER	0x00008000
 #define T55x7_MODULATION_BIPHASE	0x00010000
 #define T55x7_MODULATION_DIPHASE	0x00018000
+#define T55x7_X_MODE                0x00020000
 #define T55x7_BITRATE_RF_8			0
 #define T55x7_BITRATE_RF_16			0x00040000
 #define T55x7_BITRATE_RF_32			0x00080000
@@ -383,11 +405,163 @@ void getMemConfig(uint8_t mem_cfg, uint8_t chip_cfg, uint8_t *max_blk, uint8_t *
 #define T5555_PSK_RF_8				0x00000200
 #define T5555_USE_PWD				0x00000400
 #define T5555_USE_AOR				0x00000800
+#define T5555_SET_BITRATE(x)        (((x-2)/2)<<12)
+#define T5555_GET_BITRATE(x)        ((((x >> 12) & 0x3F)*2)+2)
 #define T5555_BITRATE_SHIFT         12 //(RF=2n+2)   ie 64=2*0x1F+2   or n = (RF-2)/2
 #define T5555_FAST_WRITE			0x00004000
 #define T5555_PAGE_SELECT			0x00008000
 
+#define T55XX_WRITE_TIMEOUT 1500
+
 uint32_t GetT55xxClockBit(uint32_t clock);
+										  
+
+// em4x05 & em4x69 chip configuration register definitions
+#define EM4x05_GET_BITRATE(x)         (((x & 0x3F)*2)+2)
+#define EM4x05_SET_BITRATE(x)         ((x-2)/2)
+#define EM4x05_MODULATION_NRZ         0x00000000
+#define EM4x05_MODULATION_MANCHESTER  0x00000040
+#define EM4x05_MODULATION_BIPHASE     0x00000080
+#define EM4x05_MODULATION_MILLER      0x000000C0 //not supported by all 4x05/4x69 chips
+#define EM4x05_MODULATION_PSK1        0x00000100 //not supported by all 4x05/4x69 chips
+#define EM4x05_MODULATION_PSK2        0x00000140 //not supported by all 4x05/4x69 chips
+#define EM4x05_MODULATION_PSK3        0x00000180 //not supported by all 4x05/4x69 chips
+#define EM4x05_MODULATION_FSK1        0x00000200 //not supported by all 4x05/4x69 chips
+#define EM4x05_MODULATION_FSK2        0x00000240 //not supported by all 4x05/4x69 chips
+#define EM4x05_PSK_RF_2               0
+#define EM4x05_PSK_RF_4               0x00000400
+#define EM4x05_PSK_RF_8               0x00000800
+#define EM4x05_MAXBLOCK_SHIFT         14
+#define EM4x05_FIRST_USER_BLOCK       5
+#define EM4x05_SET_NUM_BLOCKS(x)      ((x+5-1)<<14) //# of blocks sent during default read mode
+#define EM4x05_GET_NUM_BLOCKS(x)      (((x>>14) & 0xF)-5+1)
+#define EM4x05_READ_LOGIN_REQ         1<<18
+#define EM4x05_READ_HK_LOGIN_REQ      1<<19
+#define EM4x05_WRITE_LOGIN_REQ        1<<20
+#define EM4x05_WRITE_HK_LOGIN_REQ     1<<21
+#define EM4x05_READ_AFTER_WRITE       1<<22
+#define EM4x05_DISABLE_ALLOWED        1<<23
+#define EM4x05_READER_TALK_FIRST      1<<24
+
+
+// FeliCa protocol
+#define FELICA_POLL_REQ 0x00
+#define FELICA_POLL_ACK 0x01
+
+#define FELICA_REQSRV_REQ 0x02
+#define FELICA_REQSRV_ACK 0x03
+
+#define FELICA_RDBLK_REQ 0x06
+#define FELICA_RDBLK_ACK 0x07
+
+#define FELICA_WRTBLK_REQ 0x08
+#define FELICA_WRTBLK_ACK 0x09
+
+#define FELICA_SRCHSYSCODE_REQ 0x0a
+#define FELICA_SRCHSYSCODE_ACK 0x0b
+
+#define FELICA_REQSYSCODE_REQ 0x0c
+#define FELICA_REQSYSCODE_ACK 0x0d
+
+#define FELICA_AUTH1_REQ 0x10
+#define FELICA_AUTH1_ACK 0x11
+
+#define FELICA_AUTH2_REQ 0x12
+#define FELICA_AUTH2_ACK 0x13
+
+#define FELICA_RDSEC_REQ 0x14
+#define FELICA_RDSEC_ACK 0x15
+
+#define FELICA_WRTSEC_REQ 0x16
+#define FELICA_WRTSEC_ACK 0x17
+
+#define FELICA_REQSRV2_REQ 0x32
+#define FELICA_REQSRV2_ACK 0x33
+
+#define FELICA_GETSTATUS_REQ 0x38
+#define FELICA_GETSTATUS_ACK 0x39
+
+#define FELICA_OSVER_REQ 0x3c
+#define FELICA_OSVER_ACK 0x3d
+
+#define FELICA_RESET_MODE_REQ 0x3e
+#define FELICA_RESET_MODE_ACK 0x3f
+
+#define FELICA_AUTH1V2_REQ 0x40
+#define FELICA_AUTH1V2_ACK 0x41
+
+#define FELICA_AUTH2V2_REQ 0x42
+#define FELICA_AUTH2V2_ACK 0x43
+
+#define FELICA_RDSECV2_REQ 0x44
+#define FELICA_RDSECV2_ACK 0x45
+#define FELICA_WRTSECV2_REQ 0x46
+#define FELICA_WRTSECV2_ACK 0x47
+
+#define FELICA_UPDATE_RNDID_REQ 0x4C
+#define FELICA_UPDATE_RNDID_ACK 0x4D
+
+// FeliCa SYSTEM list
+#define SYSTEMCODE_ANY  		0xffff // ANY
+#define SYSTEMCODE_FELICA_LITE 	0x88b4 // FeliCa Lite
+#define SYSTEMCODE_COMMON 		0xfe00 // Common
+#define SYSTEMCODE_EDY			0xfe00 // Edy
+#define SYSTEMCODE_CYBERNE		0x0003 // Cyberne
+#define SYSTEMCODE_SUICA		0x0003 // Suica
+#define SYSTEMCODE_PASMO		0x0003 // Pasmo
+    
+//FeliCa Service list Suica/pasmo (little endian)
+#define SERVICE_SUICA_INOUT				0x108f // SUICA/PASMO
+#define SERVICE_SUICA_HISTORY			0x090f // SUICA/PASMO
+#define SERVICE_FELICA_LITE_READONLY	0x0b00 // FeliCa Lite RO
+#define SERVICE_FELICA_LITE_READWRITE	0x0900 // FeliCa Lite RW
+
+// Calypso protocol
+#define CALYPSO_GET_RESPONSE   0xC0
+#define CALYPSO_SELECT         0xA4
+#define CALYPSO_INVALIDATE     0x04
+#define CALYPSO_REHABILITATE   0x44
+#define CALYPSO_APPEND_RECORD  0xE2
+#define CALYPSO_DECREASE       0x30
+#define CALYPSO_INCREASE       0x32
+#define CALYPSO_READ_BINARY    0xB0
+#define CALYPSO_READ_RECORD    0xB2
+#define CALYPSO_UPDATE_BINARY  0xD6
+#define CALYPSO_UPDATE_RECORD  0xDC
+#define CALYPSO_WRITE_RECORD   0xD2
+#define CALYPSO_OPEN_SESSION   0x8A
+#define CALYPSO_CLOSE_SESSION  0x8E
+#define CALYPSO_GET_CHALLENGE  0x84
+#define CALYPSO_CHANGE_PIN     0xD8
+#define CALYPSO_VERIFY_PIN     0x20
+#define CALYPSO_SV_GET         0x7C
+#define CALYPSO_SV_DEBIT       0xBA
+#define CALYPSO_SV_RELOAD      0xB8
+#define CALYPSO_SV_UN_DEBIT    0xBC
+#define CALYPSO_SAM_SV_DEBIT   0x54
+#define CALYPSO_SAM_SV_RELOAD  0x56
+
+// iclass / picopass chip config structures and shared routines
+typedef struct {
+	uint8_t app_limit;      //[8]
+	uint8_t otp[2];         //[9-10]
+	uint8_t block_writelock;//[11]
+	uint8_t chip_config;    //[12]
+	uint8_t mem_config;     //[13]
+	uint8_t eas;            //[14]
+	uint8_t fuses;          //[15]
+} picopass_conf_block;
+
+
+typedef struct {
+	uint8_t csn[8];
+	picopass_conf_block conf;
+	uint8_t epurse[8];
+	uint8_t key_d[8];
+	uint8_t key_c[8];
+	uint8_t app_issuer_area[8];
+} picopass_hdr;
+
 
 #endif 
 // PROTOCOLS_H

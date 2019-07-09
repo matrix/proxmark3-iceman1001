@@ -1,35 +1,52 @@
-The iceman fork
+Iceman fork
 ===============
-[![Build Status](https://travis-ci.org/iceman1001/proxmark3.svg?branch=master)](https://travis-ci.org/iceman1001/proxmark3)  [![Coverity Status](https://scan.coverity.com/projects/5117/badge.svg)](https://scan.coverity.com/projects/proxmark3_iceman_fork)  [![Latest release] (https://img.shields.io/github/release/iceman1001/proxmark3.svg)] (https://github.com/iceman1001/proxmark3/releases/latest)
+[![Build Status](https://travis-ci.org/iceman1001/proxmark3.svg?branch=master)](https://travis-ci.org/iceman1001/proxmark3)[![Coverity Status](https://scan.coverity.com/projects/5117/badge.svg)](https://scan.coverity.com/project/proxmark3_iceman_fork)[![Latest release](https://img.shields.io/github/release/iceman1001/proxmark3.svg)](https://github.com/iceman1001/proxmark3/releases/latest)
 
-##This fork is HIGHLY experimental (or bleeding edge)
+## This fork is HIGHLY experimental and bleeding edge
+I don't spend much time on this repo, the last years changes has all gone into the Proxmark3 RDV4.0 repo.
 
-##Donate
-https://paypal.me/iceman1001/
-Feel free to donate. All support is welcome.
+## Proxmark3 RDV4.0 
+Ref:  [Proxmark3 RDV4.0 github repository](https://github.com/RfidResearchGroup/proxmark3)
 
-##Notice      
+The RRG repo is based upon this repo. Much development has been put into the RRG repo to bring support to all new hardware features.
+The repo fully support all of them;   like the flashmemory, smarcard sim module, high powered antennas,  FPC port with serial over USART to mention them briefly.
+
+The RRG repo has a universial Proxmark client. The repo can be easily (I really mean it) for all kinds of Proxmark3 devices,  like the green pcb,  RDV2.0,  RDV3.0 Easy,  Proxmark Evolution, etc.   It also fully supports and compiles a range of standalone modes with just one setting in the Makefile.  Proxmarking has never been this easy.
+I do recommend you check it out.  
+
+This iceman repo will live on like it is.  
+
+
+## Nothing says thank you as much as a donation 
+If you feel the love,  do feel free to become a iceman patron. For some tiers it comes with rewards
+https://www.patreon.com/iceman1001 
+
+All support is welcome.
+
+
+## Notice      
 There is so much in this fork,  with all fixes and additions its basically the most enhanced fork to this day for the Proxmark3 device. Which makes it so awesum to play with. Do please play with it. Get excited and experiment. As a side note with all coverity scan fixes this client is much more stable than PM3 Master even if I tend to break it sometimes. I'll try to make a release when this fork becomes stable between my experiments.
 
-##Official
-The official Proxmark repository is found here: https://github.com/Proxmark/proxmark3
-
-##Coverity Scan Config & Run
+## Coverity Scan Config & Run
 Download the Coverity Scan Self-buld and install it.
 You will need to configure  ARM-NON-EABI- Compiler for it to use:
 
 - Configure
+
 `cov-configure --comptype gcc --compiler  /opt/devkitpro/devkitARM/bin/arm-none-eabi-gcc`
 
-- run it (I'm running on Ubuntu)
+- Run it (I'm running on Ubuntu)
+
 `cov-build --dir cov-int make all`
 
-- make a tarball
+- Make a tarball
+
 `tar czvf proxmark3.tgz cov-int`
 
-- upload it to coverity.com
+- Upload it to coverity.com
 
-##Whats changed?
+
+## Whats changed?
 Whats so special with this fork?  I have scraped the web for different enhancements to the PM3 source code and not all of them ever found their way to the master branch. 
 Among the stuff is
 
@@ -46,7 +63,7 @@ Among the stuff is
 	* other obscure patches like for the sammy-mode,  (offline you know), tagidentifications, defaultkeys. 
 	* Minor textual changes here and there.
 	* Simulation of Ultralight/Ntag.
-	* Marshmellow's and my "RevEng" addon for the client.  Ref: http://reveng.sourceforge.net/    Now using reveng1.31
+	* Marshmellow's and my "RevEng" addon for the client.  Ref: http://reveng.sourceforge.net/    Now using reveng1.44
 	* J-Run alternative bruteforce Mifare nested auths.. (you need one other exe to make it work)
 	* A Bruteforce for T55XX passwords against tag.
 	* A Bruteforce for AWID 26, starting w a facilitycode then trying all 0xFFFF cardnumbers via simulation. To be used against a AWID Reader.
@@ -54,115 +71,84 @@ Among the stuff is
 	* Blaposts Crapto1 v3.3
     * Icsom's  legic script and legic enhancements
     * Aczid's bitsliced bruteforce solver in 'hf mf hardnested'
-
-##Straight from the CHANGELOG
-=============================
-  -  Added `hf mf key_brute` - adds J-Runs 2nd phase bruteforce ref: https://github.com/J-Run/mf_key_brute   (iceman)
-  -  Added `lf jablotron` - adds demod/clone/sim of Jablotron LF tags. (iceman)
-  -  Added `lf t55xx recoverpw` - adds a new password recovery using bitflips and partial flips if password write went bad. (alexgrin)
-  - `hf legic` - added improved legic data mapping. (jason)
-  - `hf mf mifare` - added possibility to target key A|B (douniwan5788)
-  -  Added `analyse lcr` - added a new main command group,  to help analysing bytes & bits & nibbles. (iceman)
-  -  Added `lf nedap` - added identification of a NEDAP tag. (iceman)
-  - `lf viking clone` - fixed a bug. (iceman)
-  -  Added bitsliced bruteforce solver in `hf mf hardnested` (Aczid)
-  - `hf mf chk` speedup (iceman)
-  - `hf 14a/mf sim x` attack mode,  now uses also moebius version of mfkey32 to try finding the key. (iceman)
-  - `hf 14a sim` Added emulation of Mifare cards with 10byte UID length. (iceman)
-  - `hf mf sim` Added emulation of Mifare cards with 10byte UID length. (iceman)
-  -  Added `lf guard clone/sim` (iceman)
-  -  Added `lf pyramd clone/sim` (iceman) 
-  - trying to fix `hf 14b` command to be able to read CALYPSO card.	 (iceman)
-  - `hf legic load`, it now loads faster and a casting bug is gone. (iceman)
-  -  Added `hf legic calccrc8` added a method to calculate the legic crc-8 value (iceman)
-  - `hf legic decode` fixed the output overflow bugs, better printing (iceman)
-  - Coverity Scan fixes a lot of resource leaks, etc (iceman)
-  -  Added `lf presco *` commands started (iceman) 
-  -  Added `lf hid wiegand` added a method to calculate WIEGAND in different formats, (iceman)
-  - `hf mf chkkeys` better printing, same table output as nested, faster execution and added Adam Lauries "try to read Key B if Key A is found" (iceman)
-  - `hf mf nested` better printing and added Adam Lauries "try to read Key B if Key A is found" (iceman)
-  - `hf mf mifare` fixing the zero parity path, which doesn't got called. (iceman) 
-  - Updated the @blapost's Crapto1 implementation to v3.3 (blapost) 
-  - `hf mf c*` updated the calling structure and refactored of the chinese magic commands (iceman, marshmellow)
-  - Started to add Peter Fillmore's  EMV fork into Iceman fork. ref: https://github.com/peterfillmore/proxmark3  (peter fillmore,  iceman)
-  - Added Travis-CI automatic build integration with GitHub fork. (iceman)
-  - Updated the Reveng 1.30 sourcecode to 1.31 from Reveng project homepage (iceman)
-  - Updated the Reveng 1.31 sourcecode to 1.40 from Reveng project homepage (iceman)
-  
-  - Added possibility to write direct to a Legic Prime Tag (MIM256/1024) without using values from the 'BigBuffer' -> 'hf legic writeRaw <addr> <value>' (icsom)
-  - Added possibility to decrease DCF values at address 0x05 & 0x06 on a Legic Prime Tag 
-		DCF-value will be pulled from the BigBuffer (address 0x05 & 0x06) so you have to 
-		load the data into the BigBuffer before with 'hf legic load <path/to/legic.dump>' & then
-		write the DCF-Values (both at once) with 'hf legic write 0x05 0x02'  (icsom)
-  - Added script `legic.lua` for display and edit Data of Legic-Prime Tags (icsom)
-  - Added the experimental HITAG_S support (spenneb)
-  - Added topaz detection to `hf search` (iceman)
-  - Fixed the silent mode for 14b to be used inside `hf search` (iceman)
 	
 ---	
-Give me a hint, and I'll see if I can't merge in the stuff you have. 
+## Why don't you merged with offical PM3 Master?
+Me fiddling with the code so much, there is a nightmare in merging a PR. I will never find time to do PR because of it. Much of what you find here is not in the interest for offical PM3. However and luckily I have @marshmellow42 who takes some stuff and push PR's back.  The separation from offical pm3 repo gives me very much freedom to create a firmware/client in the way I want to use the PM3.
 
-I don't actually know how to make small pull-request to github :( and that is the number one reason for me not pushing a lot of things back to the PM3 master.
+## Why don't you add this or that functionality?
+Give me a hint, and I'll see if I can't merge in the stuff you have. 
 	
-##PM3 GUI
+## PM3 GUI
 I do tend to rename and move stuff around, the official PM3-GUI from Gaucho will not work so well. *sorry*	
 
-##Development
+## Development
 This fork now compiles just fine on 
    - Windows/mingw environment with Qt5.6.1 & GCC 4.8
-   - Ubuntuu 1404, 1510
-   - Mac OS X  (or before the hardnested BF solver at least)
+   - Ubuntu 1404, 1510, 1604
+   - Mac OS X / Homebrew
+   - Docker container
 
-##Setup and build for UBUNTU
-GC made updates to allow this to build easily on Ubuntu 14.04.2 LTS or 15.10
+## Setup and build for UBUNTU
+GC made updates to allow this to build easily on Ubuntu 14.04.2 LTS, 15.10 or 16.04
 See https://github.com/Proxmark/proxmark3/wiki/Ubuntu%20Linux
 
-- Run		
-`sudo apt-get install p7zip git build-essential libreadline5 libreadline-dev libusb-0.1-4 libusb-dev libqt4-dev perl pkg-config wget libncurses5-dev`
-	
-Follow these instructions
-Get devkitARM release 41 from SourceForge (choose either the 64/32 bit depending on your architecture, it is assumed you know how to check and recognize your architecture):
+A nice and cool install script made by @daveio is found here: 
+https://github.com/daveio/attacksurface/blob/master/proxmark3/pm3-setup.sh
+I have also added this script to the fork.
+https://github.com/iceman1001/proxmark3/blob/master/install.sh
 
-(64-bit) http://sourceforge.net/projects/devkitpro/files/devkitARM/previous/devkitARM_r41-x86_64-linux.tar.bz2/download
-(32-bit) http://sourceforge.net/projects/devkitpro/files/devkitARM/previous/devkitARM_r41-i686-linux.tar.bz2/download
+- Run
+`sudo apt-get install p7zip git build-essential libreadline5 libreadline-dev libusb-0.1-4 libusb-dev libqt4-dev perl pkg-config wget libncurses5-dev gcc-arm-none-eabi`
 
-- Extract the contents of the .tar.bz2	
-`tar jxvf devkitARM_r41-<arch>-linux.tar.bz2`
-
-- Create a directory for the arm dev kit	
-`sudo mkdir -p /opt/devkitpro/`
-
-- Move the ARM developer kit to the newly created directory	
-`sudo mv devkitARM /opt/devkitpro/`
-
-- Add the appropriate environment variable		
-`export PATH=${PATH}:/opt/devkitpro/devkitARM/bin/`
-
-- Add the environment variable to your profile	
-`echo 'PATH=${PATH}:/opt/devkitpro/devkitARM/bin/ ' >> ~/.bashrc`
-
-- Clone iceman fork		
+- Clone iceman fork
 `git clone https://github.com/iceman1001/proxmark3.git`
 
-- Get the latest commits	
+- Get the latest commits
 `git pull`
 
-- CLEAN COMPILE		
+- Install the blacklist rules and  add user to dialout group (if you on a Linux/ubuntu/debian). If you do this one, you need to logout and login in again to make sure your rights got changed.
+`make udev`
+
+- Clean and complete compilation
 `make clean && make all`
 	
-- Flash the BOOTROM		
-`client/flasher /dev/ttyACM0 -b bootrom/obj/bootrom.elf`
-
-- Flash the FULLIMAGE	
-`client/flasher /dev/ttyACM0 armsrc/obj/fullimage.elf`
+- Flash the BOOTROM & FULLIMAGE
+`client/flasher /dev/ttyACM0 -b bootrom/obj/bootrom.elf armsrc/obj/fullimage.elf`
 	
-- Change into the client folder		
+- Change into the client folder
 `cd client`
 	
-- Run the client	
+- Run the client
+`./proxmark3 /dev/ttyACM0`
+
+## Setup and build for ArchLinux
+- Run
+`sudo pacman -Sy base-devel p7zip libusb readline ncurses arm-none-eabi-newlib --needed`
+`yaourt -S termcap`
+
+- Clone iceman fork
+`git clone https://github.com/iceman1001/proxmark3.git`
+
+- Get the latest commits
+`git pull`
+
+- Install the blacklist rules and  add user to dialout group (if you on a Linux/ubuntu/debian). If you do this one, you need to logout and login in again to make sure your rights got changed.
+`make udev`
+
+- Clean and complete compilation
+`make clean && make all`
+	
+- Flash the BOOTROM & FULLIMAGE
+`client/flasher /dev/ttyACM0 -b bootrom/obj/bootrom.elf armsrc/obj/fullimage.elf`
+	
+- Change into the client folder
+`cd client`
+	
+- Run the client
 `./proxmark3 /dev/ttyACM0`
 						   
-##Homebrew (Mac OS X)
+## Homebrew (Mac OS X)
 These instructions comes from @Chrisfu, where I got the proxmark3.rb scriptfile from.
 Further questions about Mac & Homebrew,  contact @Chrisfu  (https://github.com/chrisfu/)
 
@@ -172,146 +158,74 @@ Further questions about Mac & Homebrew,  contact @Chrisfu  (https://github.com/c
 
 3. Install Proxmark3: `brew install proxmark3` for stable release or `brew install --HEAD proxmark3` for latest non-stable from GitHub.
 
-##Docker container
+Upgrading HomeBrew tap formula
+-----------------------------
+*This method is useful for those looking to run bleeding-edge versions of iceman's client. Keep this in mind when attempting to update your HomeBrew tap formula as this procedure could easily cause a build to break if an update is unstable on macOS.* 
+
+Tested on macOS High Sierra 10.13.2
+
+*Note: This assumes you have already installed iceman's fork from HomeBrew as mentioned above*
+
+1. Force HomeBrew to pull the latest source from github
+`brew upgrade --fetch-HEAD iceman1001/proxmark3/proxmark3`
+ 
+2. Flash the bootloader & fullimage.elf
+  * With your Proxmark3 unplugged from your machine, press and hold the button on your Proxmark 3 as you plug it into a USB port. Continue to hold the button until after this step is complete and the `proxmark3-flasher` command outputs "Have a nice day!"*
+   `$ sudo proxmark3-flasher /dev/tty.usbmodem881 -b /usr/local/Cellar/proxmark3/HEAD-6a710ef/share/firmware/bootrom.elf /usr/local/Cellar/proxmark3/HEAD-6a710ef/share/firmware/fullimage.elf`
+
+
+`$ sudo proxmark3-flasher /dev/tty.usbmodem881 `
+
+4. Enjoy the update
+
+## Docker container
 I recently added a docker container on Docker HUB.  You find it here: https://hub.docker.com/r/iceman1001/proxmark3/
 Follow those instructions to get it up and running.  No need for the old proxspace-environment anymore.
 
-[1.6.0] How to start:   https://www.youtube.com/watch?v=b5Zta89Cf6Q
-[1.6.0] How to connect: https://youtu.be/0ZS2t5C-caI
-[1.6.1] How to flash:   https://www.youtube.com/watch?v=WXouhuGYEiw
+-[1.6.0] How to start:   https://www.youtube.com/watch?v=b5Zta89Cf6Q
+-[1.6.0] How to connect: https://youtu.be/0ZS2t5C-caI
+-[1.6.1] How to flash:   https://www.youtube.com/watch?v=WXouhuGYEiw
 
-Recommendations:
-Use only container tag [1.6.4]
+Recommendations:  Use only latest container.
 
 
 ## Building on Windows
-### 1. QT Open Source
-Download QT 5.6.1: http://download.qt.io/archive/qt/5.6/5.6.1-1/qt-opensource-windows-x86-mingw492-5.6.1-1.exe		
-Install to `C:\Qt` and choose the following components to be installed:		
-- QT - MinGW 32 bit
-- Tools - MinGW
 
-In your shell from MSYS (see below), make sure you set QTDIR to your QT installation and add its bin to your path as well:		
-`export QTDIR=/c/Qt/5.6/mingw49_32`		
-`export PATH=$PATH:$QTDIR/bin`
+### Gator96100 distro
+Rather than download and install every one of these packages, a new ProxSpace 
+environment archive file will be made available for download on the project
+page at @Gator96100's repo
 
-### 2. MSYS
-MSYS is a collection of GNU utilities such as bash, make, gawk and grep to allow building of applications and programs which depend on traditionally UNIX tools to be present. It is intended to supplement MinGW and the deficiencies of the cmd shell.
+Afterwards just clone the iceman repo or download someone elses.
+Read instructions on @Gator96100 repo page. (https://github.com/Gator96100/ProxSpace/)
 
-Download MSYS: http://downloads.sourceforge.net/mingw/MSYS-1.0.11.exe
+Links
+- https://github.com/Gator96100/ProxSpace/archive/master.zip
+- https://github.com/Gator96100/ProxSpace/releases/tag/v2.2     (release v2.2   with gcc v5.3.0 arm-none-eabi-gcc v7.1.0)
+- https://github.com/Gator96100/ProxSpace/releases/tag/v2.1     (release v2.1   with gcc v5.3.0)
 
-Follow the installation procedure, you may want to install MSYS to `C:\Qt\msys` and when asked where is your MinGW installation and for its path answer the following: `c:/Qt/Tools/mingw492_32`
-
-### 3. Readline
-Download and unpack: https://sourceforge.net/projects/gnuwin32/files/readline/5.0-1/readline-5.0-1-bin.zip/download		
-
-`bin/*` to `C:\Qt\5.6\Tools\mingw492_32\bin`		
-`include/*` to `C:\Qt\5.6\Tools\mingw492_32\include`		
-`lib/*` to `C:\Qt\5.6\Tools\mingw492_32\lib`
-
-### 4. LibUSB
-Download and unpack: https://sourceforge.net/projects/libusb-win32/files/latest/download?source=files
-
-`include/lusb0_usb.h` to `C:\Qt\5.6\Tools\mingw492_32\include`		
-`lib/gcc/libusb.a` to `C:\Qt\5.6\Tools\mingw492_32\lib`
-
-### 5. DevkitPro
-Download and install: https://sourceforge.net/projects/devkitpro/files/latest/download?source=files
-
-You only need devkitARM, nothing more (no extra lib or anything else) to compile the firmware (ARM) side. Assuming you installed it to `C:\devkitpro`, make sure you set the `DEVKITARM` environment variable to `/c/devkitPro/devkitARM` and add its bin to your PATH:		
-`export DEVKITARM=/c/devkitPro/devkitARM`		
-`export PATH=$PATH:$DEVKITARM/bin`
-
-### 6. Install Strawberry Perl
-Download and install: http://strawberry-perl.googlecode.com/files/strawberry-perl-5.10.1.1.msi
 
 ### 7. Build and run
-Download and install Git for Windows: https://git-scm.com/download/win
 
-- Run minimal system: `C:\Qt\msys\msys.bat`
-
-- Set the environment:		
-`export DEVKITARM=/c/devkitPro/devkitARM`		
-`export PATH=$PATH:$DEVKITARM/bin`		
-`export QTDIR=/c/Qt/5.6/mingw49_32`		
-`export PATH=$PATH:$QTDIR/bin`
-
-- Clone iceman fork		
+- Clone iceman fork
 `git clone https://github.com/iceman1001/proxmark3.git`
 
 - Get the latest commits	
 `git pull`
 
-- CLEAN COMPILE		
+- CLEAN COMPILE
 `make clean && make all`
 
 Assuming you have Proxmark3 Windows drivers installed you can run the Proxmark software where "X" is the com port number assigned to proxmark3 under Windows. 
 	
-- Flash the BOOTROM		
-`client/flasher.exe comX -b bootrom/obj/bootrom.elf`
-
-- Flash the FULLIMAGE	
-`client/flasher.exe comX armsrc/obj/fullimage.elf`
+- Flash the BOOTROM & FULLIMAGE
+`client/flasher.exe comX -b bootrom/obj/bootrom.elf armsrc/obj/fullimage.elf`
 	
-- Change into the client folder		
+- Change into the client folder
 `cd client`
 	
 - Run the client	
 `proxmark3.exe comX`
 
-##Buying a proxmark3
-The Proxmark 3 device is available for purchase (assembled and tested) from the following locations:
-
-   * http://proxmark3.tictail.com/ (For buyers in EU, most likely in Sweden)
- 
-   * http://www.elechouse.com/  (new and revised hardware package 2015, located in China)  
-
-
-##Enjoy
-
-January 2015, Sweden
 iceman at host iuse.se
-
-
-
-
-##Note from Jonathan Westhues
-Most of the ultra-low-volume contract assemblers could put
-something like this together with a reasonable yield. A run of around
-a dozen units is probably cost-effective. The BOM includes (possibly-
-outdated) component pricing, and everything is available from Digikey
-and the usual distributors.
-
-If you've never assembled a modern circuit board by hand, then this is
-not a good place to start. Some of the components (e.g. the crystals)
-must not be assembled with a soldering iron, and require hot air.
-
-The schematics are included; the component values given are not
-necessarily correct for all situations, but it should be possible to do
-nearly anything you would want with appropriate population options.
-
-The printed circuit board artwork is also available, as Gerbers and an
-Excellon drill file.
-
-
-LICENSING:
-
-This program is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
-
-
-Jonathan Westhues
-user jwesthues, at host cq.cx
-
-May 2007, Cambridge MA
+January 2015, Sweden

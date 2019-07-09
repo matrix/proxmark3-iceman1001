@@ -1,9 +1,10 @@
 /* poly.c
- * Greg Cook, 26/Jul/2016
+ * Greg Cook, 26/Jul/2018
  */
 
 /* CRC RevEng: arbitrary-precision CRC calculator and algorithm finder
- * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016  Gregory Cook
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018
+ * Gregory Cook
  *
  * This file is part of CRC RevEng.
  *
@@ -21,7 +22,8 @@
  * along with CRC RevEng.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-/* 2016-06-27: pcmp() shortcut returns 0 when pointers identical
+/* 2017-11-28: added braces, redundant statement skipped in prev()
+ * 2016-06-27: pcmp() shortcut returns 0 when pointers identical
  * 2015-07-29: discard leading $, &, 0x from argument to strtop()
  * 2015-04-03: added direct mode to strtop()
  * 2014-01-11: added LOFS(), RNDUP()
@@ -640,6 +642,7 @@ pshift(poly_t *dest, const poly_t src, unsigned long head, unsigned long start, 
 	/* copies bits start to end-1 of src to dest, plus the number of leading and trailing zeroes given by head and tail.
 	 * end may exceed the length of src in which case more zeroes are appended.
 	 * dest may point to src, in which case the poly is edited in place.
+	 * src must be CLEAN.
 	 * On exit, dest is CLEAN.
 	 */
 
@@ -799,7 +802,7 @@ prev(poly_t *poly) {
 	unsigned long fulllength = poly->length + ofs;
 	bmp_t accu;
 
-	if(ofs)
+	if(ofs) {
 		/* removable optimisation */
 		if(poly->length < (unsigned long) BMP_BIT) {
 			*poly->bitmap = rev(*poly->bitmap >> ofs, (int) poly->length) << ofs;
@@ -808,6 +811,7 @@ prev(poly_t *poly) {
 
 		/* claim remaining bits of last word (as we use public function pshift()) */
 		poly->length = fulllength;
+	}
 
 	/* reverse and swap words in the array, leaving it right-justified */
 	while(leftidx < rightidx) {

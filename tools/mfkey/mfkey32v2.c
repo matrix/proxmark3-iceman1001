@@ -3,10 +3,7 @@
 #include "crapto1.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
-
-#define llx PRIx64
-#define lli PRIi64
+ 
 int main (int argc, char *argv[]) {
 	struct Crypto1State *s,*t;
 	uint64_t key;     // recovered key
@@ -52,7 +49,6 @@ int main (int argc, char *argv[]) {
 	
 	printf("  nt': %08x\n", p64);
 	printf(" nt'': %08x\n", prng_successor(p64, 32));
-	clock_t t1 = clock();
 
 	// Extract the keystream from the messages
 	printf("\nKeystream used to generate {ar} and {at}:\n");
@@ -60,7 +56,6 @@ int main (int argc, char *argv[]) {
 	printf("  ks2: %08x\n",ks2);
 
 	s = lfsr_recovery32(ar0_enc ^ p64, 0);
-	
   
 	for(t = s; t->odd | t->even; ++t) {
 		lfsr_rollback_word(t, 0, 0);
@@ -71,11 +66,9 @@ int main (int argc, char *argv[]) {
 		crypto1_word(t, uid ^ nt1, 0);
 		crypto1_word(t, nr1_enc, 1);
 		if (ar1_enc == (crypto1_word(t, 0, 0) ^ p64b)) {
-			printf("\nFound Key: [%012"llx"]\n\n",key);
+			printf("\nFound Key: [%012" PRIx64 "]\n\n",key);
 			break;}
 	}
 	free(s);
-	t1 = clock() - t1;
-	if ( t1 > 0 ) printf("Time : %.0f ticks \n", (float)t1 );
 	return 0;
 }

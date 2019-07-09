@@ -10,9 +10,9 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <inttypes.h>
 #include "crc16.h"
 #include "proxmark3.h"
-#include "data.h"
 #include "ui.h"
 #include "graph.h"
 #include "cmdparser.h"
@@ -165,9 +165,9 @@ int CmdTIDemod(const char *Cmd)
 	GraphBuffer[maxPos] = 800;
 	GraphBuffer[maxPos+1] = -800;
 
-	PrintAndLog("actual data bits start at sample %d", maxPos);
+	PrintAndLogEx(NORMAL, "actual data bits start at sample %d", maxPos);
 
-	PrintAndLog("length %d/%d", highLen, lowLen);
+	PrintAndLogEx(NORMAL, "length %d/%d", highLen, lowLen);
 
 	uint8_t bits[1+64+16+8+16];
 	bits[sizeof(bits)-1] = '\0';
@@ -208,19 +208,19 @@ int CmdTIDemod(const char *Cmd)
 
 	RepaintGraphWindow();
 	
-	PrintAndLog("Info: raw tag bits = %s", bits);
+	PrintAndLogEx(INFO, "INFO: raw tag bits = %s", bits);
 
 	TagType = (shift3>>8)&0xff;
 	if ( TagType != ((shift0>>16)&0xff) ) {
-		PrintAndLog("Error: start and stop bits do not match!");
+		PrintAndLogEx(WARNING, "Error: start and stop bits do not match!");
 		return 0;
 	}
 	else if (TagType == 0x7e) {
-		PrintAndLog("Info: Readonly TI tag detected.");
+		PrintAndLogEx(INFO, "INFO: Readonly TI tag detected.");
 		return 0;
 	}
 	else if (TagType == 0xfe) {
-		PrintAndLog("Info: Rewriteable TI tag detected.");
+		PrintAndLogEx(INFO, "INFO: Rewriteable TI tag detected.");
 
 		// put 64 bit data into shift1 and shift0
 		shift0 = (shift0>>24) | (shift1 << 8);
@@ -234,7 +234,7 @@ int CmdTIDemod(const char *Cmd)
 
 		// only 15 bits compare, last bit of ident is not valid
 		if ( (shift3^shift0)&0x7fff ) {
-		  PrintAndLog("Error: Ident mismatch!");
+		  PrintAndLogEx(WARNING, "Error: Ident mismatch!");
 		}
 		// WARNING the order of the bytes in which we calc crc below needs checking
 		// i'm 99% sure the crc algorithm is correct, but it may need to eat the
@@ -254,14 +254,14 @@ int CmdTIDemod(const char *Cmd)
 
 		char *crcStr = (crc == (shift2&0xffff) ) ? "Passed" : "Failed";
 	
-		PrintAndLog("Tag data = %08X%08X  [Crc %04X %s]", shift1, shift0, crc, crcStr );
+		PrintAndLogEx(NORMAL, "Tag data = %08X%08X  [Crc %04X %s]", shift1, shift0, crc, crcStr );
 
 		if (crc != (shift2&0xffff))
-			PrintAndLog("Error: CRC mismatch, calculated %04X, got %04X", crc, shift2&0xffff);
+			PrintAndLogEx(WARNING, "Error: CRC mismatch, calculated %04X, got %04X", crc, shift2&0xffff);
    
 	}
 	else {
-		PrintAndLog("Unknown tag type.");
+		PrintAndLogEx(WARNING, "Unknown tag type.");
 	}
 	return 0;
 }
@@ -280,11 +280,11 @@ int CmdTIWrite(const char *Cmd)
 {
 	int res = 0;
 	UsbCommand c = {CMD_WRITE_TI_TYPE};
-	res = sscanf(Cmd, "%012"llx" %012"llx" %012"llx"", &c.arg[0], &c.arg[1], &c.arg[2]);
+	res = sscanf(Cmd, "%012" SCNx64 " %012" SCNx64 " %012" SCNx64 "", &c.arg[0], &c.arg[1], &c.arg[2]);
 
 	if (res == 2) c.arg[2]=0;
 	if (res < 2) {
-		PrintAndLog("Please specify the data as two hex strings, optionally the CRC as a third");
+		PrintAndLogEx(NORMAL, "Please specify the data as two hex strings, optionally the CRC as a third");
 		return 1;
 	}
 	clearCommandBuffer();
@@ -294,7 +294,7 @@ int CmdTIWrite(const char *Cmd)
 
 static command_t CommandTable[] = {
   {"help",      CmdHelp,        1, "This help"},
-  {"demod",     CmdTIDemod,     1, "Demodulate raw bits for TI-type LF tag"},
+  {"demod",     CmdTIDemod,     1, "Demodulate raw bits for TI-type LF tag from the GraphBuffer"},
   {"read",      CmdTIRead,      0, "Read and decode a TI 134 kHz tag"},
   {"write",     CmdTIWrite,     0, "Write new data to a r/w TI 134 kHz tag"},
   {NULL, NULL, 0, NULL}
