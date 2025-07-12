@@ -1,20 +1,18 @@
-Iceman fork
-===============
+[Deprecated] Iceman fork
+=========================
 [![Build Status](https://travis-ci.org/iceman1001/proxmark3.svg?branch=master)](https://travis-ci.org/iceman1001/proxmark3)[![Coverity Status](https://scan.coverity.com/projects/5117/badge.svg)](https://scan.coverity.com/project/proxmark3_iceman_fork)[![Latest release](https://img.shields.io/github/release/iceman1001/proxmark3.svg)](https://github.com/iceman1001/proxmark3/releases/latest)
 
-## This fork is HIGHLY experimental and bleeding edge
-I don't spend much time on this repo, the last years changes has all gone into the Proxmark3 RDV4.0 repo.
+# THIS FORK HAS BEEN DEPRECATED,  USE RRG/ICEMAN REPO INSTEAD!
 
-## Proxmark3 RDV4.0 
 Ref:  [Proxmark3 RDV4.0 github repository](https://github.com/RfidResearchGroup/proxmark3)
 
-The RRG repo is based upon this repo. Much development has been put into the RRG repo to bring support to all new hardware features.
+The RRG/Iceman repo is based upon this repo. Much development has been put into the RRG repo to bring support to all new hardware features.
 The repo fully support all of them;   like the flashmemory, smarcard sim module, high powered antennas,  FPC port with serial over USART to mention them briefly.
 
-The RRG repo has a universial Proxmark client. The repo can be easily (I really mean it) for all kinds of Proxmark3 devices,  like the green pcb,  RDV2.0,  RDV3.0 Easy,  Proxmark Evolution, etc.   It also fully supports and compiles a range of standalone modes with just one setting in the Makefile.  Proxmarking has never been this easy.
+The RRG repo has a universial Proxmark client. The repo can be easily (I really mean it) used with all kinds of Proxmark3 devices,  like the green pcb,  RDV2.0,  RDV3.0 Easy,  Proxmark Evolution, etc.   It also fully supports and compiles a range of standalone modes with just one setting in the Makefile.  Proxmarking has never been this easy.
 I do recommend you check it out.  
 
-This iceman repo will live on like it is.  
+===============================================================================
 
 
 ## Nothing says thank you as much as a donation 
